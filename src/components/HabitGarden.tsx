@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { format, startOfWeek, addDays, subWeeks, isAfter } from 'date-fns'
+import { format, parseISO, startOfWeek, addDays, subWeeks, isAfter } from 'date-fns'
 import { Icon } from './Icon'
 import { ProgressBar } from './ProgressBar'
 import type { Habit, HabitLog, HabitSkipReason } from '../db/types'
@@ -48,7 +48,15 @@ export function HabitGarden({ habit, logs, skipReasons, onToggleToday, onEdit }:
   )
   const recentReason = useMemo(() => getMostRecentReason(habitSkipReasons), [habitSkipReasons])
 
+  const pastNotes = useMemo(
+    () => habitSkipReasons
+      .filter(r => r.reason.trim().length > 0)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [habitSkipReasons],
+  )
+
   const [dismissedInactivity, setDismissedInactivity] = useState(false)
+  const [showNotes,           setShowNotes]           = useState(false)
 
   const grid = useMemo(() => {
     const todayDate  = new Date()
@@ -185,8 +193,40 @@ export function HabitGarden({ habit, logs, skipReasons, onToggleToday, onEdit }:
           onSkip={() => saveHabitSkipReason(habit.id, skipPrompt.periodKey, '')}
         />
       )}
+
+      {/* Past notes — where saved "what got in the way" reasons actually live */}
+      {pastNotes.length > 0 && (
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <button
+            onClick={() => setShowNotes(v => !v)}
+            className="faint"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}
+          >
+            <span style={{ transform: showNotes ? 'rotate(90deg)' : 'none', display: 'inline-flex', transition: 'transform .15s' }}>
+              <Icon name="chevronRight" size={13} />
+            </span>
+            {pastNotes.length} note{pastNotes.length > 1 ? 's' : ''}
+          </button>
+          {showNotes && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              {pastNotes.map(n => (
+                <div key={n.id} style={{ fontSize: 12.5, lineHeight: 1.4 }}>
+                  <span className="faint">{noteDateLabel(habit.cadence, n.periodKey)}</span>
+                  {' — '}
+                  <span className="muted">{n.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
+}
+
+function noteDateLabel(cadence: Habit['cadence'], periodKey: string): string {
+  const label = format(parseISO(periodKey), 'MMM d')
+  return cadence === 'daily' ? label : `Week of ${label}`
 }
 
 function SkipPromptCard({
