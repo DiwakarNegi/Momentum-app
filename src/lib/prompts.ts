@@ -27,6 +27,12 @@ export const PROMPT_ICON: Record<Prompt['type'], string> = {
   identity:  'identity',
 }
 
+export const PROMPT_COLOR: Record<Prompt['type'], string> = {
+  gratitude: 'lavender',
+  reframe:   'sky',
+  identity:  'amber',
+}
+
 /** Deterministically picks a prompt by day-of-year so it's stable for the day. */
 export function getPromptForDate(date: Date): Prompt {
   const start      = new Date(date.getFullYear(), 0, 0)

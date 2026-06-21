@@ -8,6 +8,7 @@ import {
   energyLabel,
   PROMPT_LABEL,
   PROMPT_ICON,
+  PROMPT_COLOR,
 } from '../lib/prompts'
 import { Icon } from '../components/Icon'
 import type { Reflection } from '../db/types'
@@ -117,7 +118,7 @@ export function ReflectPage() {
           <div style={{ marginBottom: 12 }}>
             <span
               className="chip done static"
-              style={{ '--chip-c': 'var(--c-lavender)', fontSize: 11.5 } as React.CSSProperties}
+              style={{ background: `var(--c-${PROMPT_COLOR[todayPrompt.type]})`, fontSize: 11.5 }}
             >
               <Icon name={PROMPT_ICON[todayPrompt.type]} size={13} />
               {PROMPT_LABEL[todayPrompt.type]}
