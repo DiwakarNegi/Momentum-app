@@ -116,7 +116,7 @@ export function ReflectPage() {
           {/* Prompt type chip */}
           <div style={{ marginBottom: 12 }}>
             <span
-              className="chip done"
+              className="chip done static"
               style={{ '--chip-c': 'var(--c-lavender)', fontSize: 11.5 } as React.CSSProperties}
             >
               <Icon name={PROMPT_ICON[todayPrompt.type]} size={13} />

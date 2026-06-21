@@ -293,6 +293,8 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -0.02e
 }
 .chip:active { transform: scale(0.93); }
 .chip.done { color: var(--on-accent); border-color: transparent; }
+.chip.static { cursor: default; }
+.chip.static:active { transform: none; }
 .chip .chip-ic { display: grid; place-items: center; }
 
 /* ---------- garden ---------- */
