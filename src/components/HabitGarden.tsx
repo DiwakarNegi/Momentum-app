@@ -35,7 +35,8 @@ export function HabitGarden({ habit, logs, skipReasons, onToggleToday, onEdit }:
 
   const lastLogDate = useMemo(() => {
     if (logSet.size === 0) return null
-    return [...logSet].sort().at(-1) ?? null
+    const sorted = [...logSet].sort()
+    return sorted[sorted.length - 1]
   }, [logSet])
 
   const inactiveDays = daysSinceLastLog(today, lastLogDate)
