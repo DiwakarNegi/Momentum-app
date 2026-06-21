@@ -247,10 +247,11 @@ export function FocusPage() {
   }
 
   // ── Idle ───────────────────────────────────────────────────────────────────
+  const todayDateStr = format(new Date(), 'yyyy-MM-dd')
   const incomplete = tasks?.filter(t => !t.completed) ?? []
   const complete   = tasks?.filter(t => t.completed)  ?? []
-  const todaySessions = sessions?.filter(s => s.date === format(new Date(), 'yyyy-MM-dd')) ?? []
-  const pastSessions  = sessions?.filter(s => s.date !== format(new Date(), 'yyyy-MM-dd')) ?? []
+  const todaySessions = sessions?.filter(s => s.date === todayDateStr) ?? []
+  const pastSessions  = sessions?.filter(s => s.date !== todayDateStr) ?? []
 
   return (
     <div className="page fade-up">
@@ -268,6 +269,7 @@ export function FocusPage() {
       <TaskList
         incomplete={incomplete}
         complete={complete}
+        todayDateStr={todayDateStr}
         onLaunch={launchFromTask}
       />
 
@@ -312,13 +314,17 @@ export function FocusPage() {
 
 // ─── Task list ────────────────────────────────────────────────────────────────
 
-function TaskList({ incomplete, complete, onLaunch }: {
-  incomplete: FocusTask[]
-  complete:   FocusTask[]
-  onLaunch:   (task: FocusTask) => void
+function TaskList({ incomplete, complete, todayDateStr, onLaunch }: {
+  incomplete:   FocusTask[]
+  complete:     FocusTask[]
+  todayDateStr: string
+  onLaunch:     (task: FocusTask) => void
 }) {
   const [input,    setInput]    = useState('')
   const [showDone, setShowDone] = useState(false)
+
+  const carriedOver = incomplete.filter(t => !t.createdAt.startsWith(todayDateStr))
+  const addedToday  = incomplete.filter(t =>  t.createdAt.startsWith(todayDateStr))
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -357,12 +363,33 @@ function TaskList({ incomplete, complete, onLaunch }: {
         </button>
       </form>
 
-      {/* Incomplete tasks */}
-      {incomplete.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {incomplete.map(t => (
-            <TaskRow key={t.id} task={t} onLaunch={() => onLaunch(t)} />
-          ))}
+      {/* Carried-over tasks — showcased first, calm framing (never "overdue") */}
+      {carriedOver.length > 0 && (
+        <div style={{ marginBottom: addedToday.length > 0 ? 14 : 4 }}>
+          <div className="faint" style={{ fontSize: 11.5, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Still open
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {carriedOver.map(t => (
+              <TaskRow key={t.id} task={t} onLaunch={() => onLaunch(t)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Today's tasks */}
+      {addedToday.length > 0 && (
+        <div>
+          {carriedOver.length > 0 && (
+            <div className="faint" style={{ fontSize: 11.5, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Added today
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {addedToday.map(t => (
+              <TaskRow key={t.id} task={t} onLaunch={() => onLaunch(t)} />
+            ))}
+          </div>
         </div>
       )}
 

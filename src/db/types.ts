@@ -74,6 +74,14 @@ export interface FocusSession {
   endedAt?: string
 }
 
+export interface HabitSkipReason {
+  id: string
+  habitId: string
+  periodKey: string // daily: the missed yyyy-MM-dd. flexible/weekly: ISO week-start yyyy-MM-dd
+  reason: string     // '' is valid — means "asked, user skipped" (prevents re-asking)
+  createdAt: string
+}
+
 export interface Meta {
   key: string
   value: number | string | boolean

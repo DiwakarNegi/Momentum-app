@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { useHabits, useHabitLogs } from '../db/hooks'
+import { useHabits, useHabitLogs, useHabitSkipReasons } from '../db/hooks'
 import { toggleHabitLog } from '../db/operations'
 import { Icon } from '../components/Icon'
 import type { Habit } from '../db/types'
@@ -8,8 +8,9 @@ import { HabitGarden } from '../components/HabitGarden'
 import { HabitModal }  from '../components/HabitModal'
 
 export function HabitsPage() {
-  const habits = useHabits()
-  const logs   = useHabitLogs(56)
+  const habits      = useHabits()
+  const logs        = useHabitLogs(56)
+  const skipReasons = useHabitSkipReasons()
   const [modalHabit, setModalHabit] = useState<Habit | 'new' | null>(null)
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
@@ -27,7 +28,7 @@ export function HabitsPage() {
         <div>
           <h1 className="h-greet" style={{ fontSize: 27 }}>The Garden</h1>
           <p className="muted" style={{ margin: '6px 0 0', fontSize: 14.5 }}>
-            Tap today's square to log. Missing a day just stays quiet — never red.
+            Tap today's square to log it. A quiet day doesn't undo anything — pick back up whenever you're ready.
           </p>
         </div>
         <button className="btn btn-accent" onClick={() => setModalHabit('new')}>
@@ -54,6 +55,7 @@ export function HabitsPage() {
             key={h.id}
             habit={h}
             logs={logs}
+            skipReasons={skipReasons ?? []}
             onToggleToday={() => toggleHabitLog(h.id, todayStr)}
             onEdit={() => setModalHabit(h)}
           />

@@ -178,6 +178,12 @@ export function useTodayFocusSessions(): import('./types').FocusSession[] | unde
   )
 }
 
+// ─── Habit skip reasons ────────────────────────────────────────────────────────
+
+export function useHabitSkipReasons(): import('./types').HabitSkipReason[] | undefined {
+  return useLiveQuery(() => db.habitSkipReasons.toArray())
+}
+
 // ─── Streak ───────────────────────────────────────────────────────────────────
 
 export function useStreak() {

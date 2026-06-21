@@ -4,7 +4,7 @@
 import { v4 as uuid } from 'uuid'
 import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns'
 import { db, getMeta, setMeta } from './index'
-import type { FocusSession, FocusTask, Habit, HabitLog, JobApplication, JobStage, Meta, MomentumSnapshot, Reflection } from './types'
+import type { FocusSession, FocusTask, Habit, HabitLog, HabitSkipReason, JobApplication, JobStage, Meta, MomentumSnapshot, Reflection } from './types'
 import {
   computeDailyActivity,
   applyDecay,
@@ -19,7 +19,7 @@ import { pushToCloud } from '../lib/supabase'
 let _syncTimer: ReturnType<typeof setTimeout> | null = null
 
 async function buildDataPayload() {
-  const [habits, habitLogs, jobApplications, reflections, momentumSnapshots, focusSessions, focusTasks, meta] =
+  const [habits, habitLogs, jobApplications, reflections, momentumSnapshots, focusSessions, focusTasks, habitSkipReasons, meta] =
     await Promise.all([
       db.habits.toArray(),
       db.habitLogs.toArray(),
@@ -28,9 +28,10 @@ async function buildDataPayload() {
       db.momentumSnapshots.toArray(),
       db.focusSessions.toArray(),
       db.focusTasks.toArray(),
+      db.habitSkipReasons.toArray(),
       db.meta.toArray(),
     ])
-  return { version: 3, habits, habitLogs, jobApplications, reflections, momentumSnapshots, focusSessions, focusTasks, meta }
+  return { version: 4, habits, habitLogs, jobApplications, reflections, momentumSnapshots, focusSessions, focusTasks, habitSkipReasons, meta }
 }
 
 function scheduleSyncToCloud() {
@@ -166,6 +167,26 @@ export async function toggleHabitLog(habitId: string, dateStr: string): Promise<
   await recomputeToday()
 }
 
+// Informational only — never calls recomputeToday(). Per CLAUDE.md §10 this
+// must never affect momentum/streak, and the prompt it backs must never be a
+// forced/blocking dialog (see HabitGarden.tsx).
+export async function saveHabitSkipReason(habitId: string, periodKey: string, reason: string): Promise<void> {
+  const existing = await db.habitSkipReasons
+    .where('[habitId+periodKey]').equals([habitId, periodKey])
+    .first()
+  if (existing) {
+    await db.habitSkipReasons.update(existing.id, { reason })
+  } else {
+    await db.habitSkipReasons.add({ id: uuid(), habitId, periodKey, reason, createdAt: new Date().toISOString() })
+  }
+  scheduleSyncToCloud()
+}
+
+export async function deleteHabitSkipReason(id: string): Promise<void> {
+  await db.habitSkipReasons.delete(id)
+  scheduleSyncToCloud()
+}
+
 // ─── Job application operations ───────────────────────────────────────────────
 
 export async function addJobApplication(
@@ -217,7 +238,7 @@ export async function updateSetting(key: string, value: Meta['value']): Promise<
 // ─── Data management ──────────────────────────────────────────────────────────
 
 export async function exportAllData(): Promise<void> {
-  const [habits, habitLogs, jobApplications, reflections, momentumSnapshots, focusSessions, focusTasks, meta] =
+  const [habits, habitLogs, jobApplications, reflections, momentumSnapshots, focusSessions, focusTasks, habitSkipReasons, meta] =
     await Promise.all([
       db.habits.toArray(),
       db.habitLogs.toArray(),
@@ -226,11 +247,12 @@ export async function exportAllData(): Promise<void> {
       db.momentumSnapshots.toArray(),
       db.focusSessions.toArray(),
       db.focusTasks.toArray(),
+      db.habitSkipReasons.toArray(),
       db.meta.toArray(),
     ])
 
   const payload = {
-    version:    3,
+    version:    4,
     exportedAt: new Date().toISOString(),
     habits,
     habitLogs,
@@ -239,6 +261,7 @@ export async function exportAllData(): Promise<void> {
     momentumSnapshots,
     focusSessions,
     focusTasks,
+    habitSkipReasons,
     meta,
   }
 
@@ -266,7 +289,7 @@ export async function importAllData(jsonText: string): Promise<void> {
   }
 
   // Clear then bulk-insert inside a transaction
-  await db.transaction('rw', [db.habits, db.habitLogs, db.jobApplications, db.reflections, db.momentumSnapshots, db.focusSessions, db.focusTasks, db.meta], async () => {
+  await db.transaction('rw', [db.habits, db.habitLogs, db.jobApplications, db.reflections, db.momentumSnapshots, db.focusSessions, db.focusTasks, db.habitSkipReasons, db.meta], async () => {
     await Promise.all([
       db.habits.clear(),
       db.habitLogs.clear(),
@@ -275,6 +298,7 @@ export async function importAllData(jsonText: string): Promise<void> {
       db.momentumSnapshots.clear(),
       db.focusSessions.clear(),
       db.focusTasks.clear(),
+      db.habitSkipReasons.clear(),
       db.meta.clear(),
     ])
     await Promise.all([
@@ -285,13 +309,14 @@ export async function importAllData(jsonText: string): Promise<void> {
       Array.isArray(data.momentumSnapshots) ? db.momentumSnapshots.bulkAdd(data.momentumSnapshots as MomentumSnapshot[]) : Promise.resolve(),
       Array.isArray(data.focusSessions)     ? db.focusSessions.bulkAdd(data.focusSessions as FocusSession[])             : Promise.resolve(),
       Array.isArray(data.focusTasks)        ? db.focusTasks.bulkAdd(data.focusTasks as FocusTask[])                      : Promise.resolve(),
+      Array.isArray(data.habitSkipReasons)  ? db.habitSkipReasons.bulkAdd(data.habitSkipReasons as HabitSkipReason[])    : Promise.resolve(),
       Array.isArray(data.meta)              ? db.meta.bulkAdd(data.meta as Meta[])                                       : Promise.resolve(),
     ])
   })
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.transaction('rw', [db.habits, db.habitLogs, db.jobApplications, db.reflections, db.momentumSnapshots, db.focusSessions, db.focusTasks, db.meta], async () => {
+  await db.transaction('rw', [db.habits, db.habitLogs, db.jobApplications, db.reflections, db.momentumSnapshots, db.focusSessions, db.focusTasks, db.habitSkipReasons, db.meta], async () => {
     await Promise.all([
       db.habits.clear(),
       db.habitLogs.clear(),
@@ -300,6 +325,7 @@ export async function clearAllData(): Promise<void> {
       db.momentumSnapshots.clear(),
       db.focusSessions.clear(),
       db.focusTasks.clear(),
+      db.habitSkipReasons.clear(),
       db.meta.clear(),
     ])
   })

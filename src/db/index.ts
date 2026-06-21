@@ -7,6 +7,7 @@ import type {
   MomentumSnapshot,
   FocusSession,
   FocusTask,
+  HabitSkipReason,
   Meta,
 } from './types'
 
@@ -18,6 +19,7 @@ export class MomentumDB extends Dexie {
   momentumSnapshots!:  Table<MomentumSnapshot,  string>
   focusSessions!:      Table<FocusSession,      string>
   focusTasks!:         Table<FocusTask,         string>
+  habitSkipReasons!:   Table<HabitSkipReason,   string>
   meta!:               Table<Meta,              string>
 
   constructor() {
@@ -47,6 +49,17 @@ export class MomentumDB extends Dexie {
       momentumSnapshots: 'date',
       focusSessions:     'id, date, createdAt',
       focusTasks:        'id, completed, createdAt',
+      meta:              'key',
+    })
+    this.version(4).stores({
+      habits:            'id, archived',
+      habitLogs:         'id, [habitId+date], date',
+      jobApplications:   'id, stage, updatedAt',
+      reflections:       'id, date',
+      momentumSnapshots: 'date',
+      focusSessions:     'id, date, createdAt',
+      focusTasks:        'id, completed, createdAt',
+      habitSkipReasons:  'id, [habitId+periodKey], habitId',
       meta:              'key',
     })
   }

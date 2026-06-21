@@ -2,27 +2,52 @@ import { useMemo, useState } from 'react'
 import { format, startOfWeek, addDays, subWeeks, isAfter } from 'date-fns'
 import { Icon } from './Icon'
 import { ProgressBar } from './ProgressBar'
-import type { Habit, HabitLog } from '../db/types'
+import type { Habit, HabitLog, HabitSkipReason } from '../db/types'
 import { computeCurrentRun, computeLongestRun } from '../lib/streak'
+import { getSkipPrompt, getMostRecentReason, isInactiveTooLong, daysSinceLastLog } from '../lib/habitNudge'
+import { saveHabitSkipReason } from '../db/operations'
 
 interface Props {
   habit:         Habit
   logs:          HabitLog[]
+  skipReasons:   HabitSkipReason[]
   onToggleToday: () => void
   onEdit:        () => void
 }
 
 const WEEK_COLS = 8
 
-export function HabitGarden({ habit, logs, onToggleToday, onEdit }: Props) {
+export function HabitGarden({ habit, logs, skipReasons, onToggleToday, onEdit }: Props) {
   const today    = format(new Date(), 'yyyy-MM-dd')
   const color    = habit.color ?? 'sage'
   const iconName = habit.icon ?? 'spark'
 
-  const logSet = useMemo(
-    () => new Set(logs.filter(l => l.habitId === habit.id).map(l => l.date)),
+  const habitLogs = useMemo(
+    () => logs.filter(l => l.habitId === habit.id),
     [logs, habit.id],
   )
+  const logSet = useMemo(() => new Set(habitLogs.map(l => l.date)), [habitLogs])
+
+  const habitSkipReasons = useMemo(
+    () => skipReasons.filter(r => r.habitId === habit.id),
+    [skipReasons, habit.id],
+  )
+
+  const lastLogDate = useMemo(() => {
+    if (logSet.size === 0) return null
+    return [...logSet].sort().at(-1) ?? null
+  }, [logSet])
+
+  const inactiveDays = daysSinceLastLog(today, lastLogDate)
+  const showInactivityNudge = isInactiveTooLong(today, lastLogDate, habit.createdAt)
+
+  const skipPrompt   = useMemo(
+    () => getSkipPrompt(habit, today, habitLogs, habitSkipReasons),
+    [habit, today, habitLogs, habitSkipReasons],
+  )
+  const recentReason = useMemo(() => getMostRecentReason(habitSkipReasons), [habitSkipReasons])
+
+  const [dismissedInactivity, setDismissedInactivity] = useState(false)
 
   const grid = useMemo(() => {
     const todayDate  = new Date()
@@ -126,6 +151,85 @@ export function HabitGarden({ habit, logs, onToggleToday, onEdit }: Props) {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Passive inactivity reminder — informational only, never a question.
+          Per CLAUDE.md §2/§10: quiet visibility, no guilt, one-click to act or dismiss. */}
+      {showInactivityNudge && !dismissedInactivity && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+          <div className="tile" style={{ width: 34, height: 34, flexShrink: 0, '--tile-c': `var(--c-${color})` } as React.CSSProperties}>
+            <Icon name="leaf" size={17} />
+          </div>
+          <p className="muted" style={{ flex: 1, fontSize: 13, margin: 0, lineHeight: 1.4 }}>
+            {inactiveDays == null
+              ? "Hasn't been tended yet — no pressure, whenever you're ready."
+              : `Hasn't been tended in ${inactiveDays} days — no pressure.`}
+          </p>
+          <button className="btn btn-accent btn-sm" onClick={onToggleToday} style={{ flexShrink: 0 }}>
+            Log it now
+          </button>
+          <button className="icon-btn" onClick={() => setDismissedInactivity(true)} aria-label="Dismiss">
+            <Icon name="close" size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* "What got in the way?" — cadence-aware (HabitGarden.tsx via getSkipPrompt),
+          never a blocking modal, never re-asked about the same missed period twice. */}
+      {skipPrompt && (
+        <SkipPromptCard
+          color={color}
+          recentReason={recentReason}
+          onSave={text => saveHabitSkipReason(habit.id, skipPrompt.periodKey, text)}
+          onSkip={() => saveHabitSkipReason(habit.id, skipPrompt.periodKey, '')}
+        />
+      )}
+    </div>
+  )
+}
+
+function SkipPromptCard({
+  color,
+  recentReason,
+  onSave,
+  onSkip,
+}: {
+  color:        string
+  recentReason: HabitSkipReason | null
+  onSave:       (text: string) => void
+  onSkip:       () => void
+}) {
+  const [text, setText] = useState('')
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div className="tile" style={{ width: 34, height: 34, flexShrink: 0, '--tile-c': `var(--c-${color})` } as React.CSSProperties}>
+          <Icon name="note" size={16} />
+        </div>
+        <p style={{ flex: 1, fontSize: 13.5, fontWeight: 500, margin: 0 }}>What got in the way?</p>
+      </div>
+      {recentReason && (
+        <p className="faint" style={{ fontSize: 12, margin: '0 0 8px 44px' }}>
+          Last time: "{recentReason.reason}"
+        </p>
+      )}
+      <div style={{ display: 'flex', gap: 8, marginLeft: 44 }}>
+        <input
+          className="field"
+          style={{ flex: 1 }}
+          placeholder="Totally optional…"
+          value={text}
+          onChange={e => setText(e.target.value)}
+          maxLength={150}
+          onKeyDown={e => { if (e.key === 'Enter' && text.trim()) onSave(text.trim()) }}
+        />
+        <button className="btn btn-accent btn-sm" disabled={!text.trim()} onClick={() => onSave(text.trim())}>
+          Save
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={onSkip}>
+          Skip
+        </button>
       </div>
     </div>
   )
