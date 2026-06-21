@@ -75,6 +75,14 @@ describe('getSkipPrompt — cadence dispatch', () => {
     const logs: HabitLog[] = []
     expect(getSkipPrompt(weeklyHabit, '2024-06-08', logs, [])).toEqual({ periodKey: '2024-06-03' })
   })
+
+  it('logging today resolves any pending prompt — re-engaging is never followed by an interrogation', () => {
+    const dailyLogs: HabitLog[] = [{ id: '1', habitId: 'h', date: '2024-06-08' }]
+    expect(getSkipPrompt(dailyHabit, '2024-06-08', dailyLogs, [])).toBeNull()
+
+    const flexLogs: HabitLog[] = [{ id: '1', habitId: 'h', date: '2024-06-08' }]
+    expect(getSkipPrompt(flexHabit, '2024-06-08', flexLogs, [])).toBeNull()
+  })
 })
 
 describe('getMostRecentReason', () => {

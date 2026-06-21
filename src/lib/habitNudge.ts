@@ -55,13 +55,20 @@ export function getFlexibleSkipPrompt(
   return { periodKey: weekStart }
 }
 
-/** Cadence dispatcher for the UI layer. Treats 'weekly' the same as 'flexible' (target-based). */
+/**
+ * Cadence dispatcher for the UI layer. Treats 'weekly' the same as 'flexible'
+ * (target-based). Logging today is itself the resolution — once the user has
+ * re-engaged today, never ask about a prior missed day/week (CLAUDE.md §2:
+ * recovery is celebrated, never followed by an interrogation about the past).
+ */
 export function getSkipPrompt(
   habit: Pick<Habit, 'cadence' | 'targetPerWeek' | 'createdAt'>,
   today: string,
   logsForHabit: HabitLog[],
   skipReasonsForHabit: HabitSkipReason[],
 ): SkipPrompt | null {
+  if (logsForHabit.some(l => l.date === today)) return null
+
   const askedPeriodKeys = new Set(skipReasonsForHabit.map(r => r.periodKey))
 
   if (habit.cadence === 'daily') {

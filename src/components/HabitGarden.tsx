@@ -40,7 +40,7 @@ export function HabitGarden({ habit, logs, skipReasons, onToggleToday, onEdit }:
   }, [logSet])
 
   const inactiveDays = daysSinceLastLog(today, lastLogDate)
-  const showInactivityNudge = isInactiveTooLong(today, lastLogDate, habit.createdAt)
+  const showInactivityNudge = !logSet.has(today) && isInactiveTooLong(today, lastLogDate, habit.createdAt)
 
   const skipPrompt   = useMemo(
     () => getSkipPrompt(habit, today, habitLogs, habitSkipReasons),
