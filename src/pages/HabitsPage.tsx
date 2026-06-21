@@ -49,7 +49,7 @@ export function HabitsPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 18, alignItems: 'start' }}>
         {habits.map(h => (
           <HabitGarden
             key={h.id}
