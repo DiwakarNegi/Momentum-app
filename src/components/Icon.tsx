@@ -247,6 +247,20 @@ const PATHS: Record<string, React.ReactNode> = {
   lightning: (
     <path d="M13.5 2.5 5.5 13h7.5L10 21.5 19 11h-7.5Z" className="ic-soft" />
   ),
+  palmtree: (
+    <>
+      <path d="M13 22c0-4-1-8-1-12" />
+      <path d="M12 10C9 8 6 6 4 3c3.5-.5 8 2 8 7Z" className="ic-soft" />
+      <path d="M12 10c3-2 6-4 8-7-3.5-.5-8 2-8 7Z" className="ic-soft" />
+      <path d="M12 8c-1-3 0-5 2-7-3 1-4 4-2 7Z" className="ic-soft" />
+    </>
+  ),
+  door: (
+    <>
+      <rect x="5" y="3" width="14" height="18" rx="1.5" className="ic-soft" />
+      <circle cx="15.5" cy="12" r="1" />
+    </>
+  ),
 }
 
 interface IconProps {

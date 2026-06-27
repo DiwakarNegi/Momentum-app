@@ -21,7 +21,7 @@ type YTPlayerCtor = new (el: HTMLElement, opts: {
   playerVars?: Record<string, string | number>
   events?: { onReady?: (e: { target: YTPlayerInstance }) => void }
 }) => YTPlayerInstance
-interface YTPlayerInstance { setVolume(v: number): void; unMute(): void; destroy(): void }
+interface YTPlayerInstance { setVolume(v: number): void; unMute(): void; loadVideoById(id: string): void; destroy(): void }
 
 // ─── Lofi radio stations ─────────────────────────────────────────────────────
 // All verified active 24/7 YouTube live streams (checked June 2026).
@@ -886,7 +886,7 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
           {choosing
             ? <Icon name="flame" size={38} stroke={1.5} />
             : isLongBreak
-              ? <Icon name="moon" size={38} stroke={1.5} />
+              ? <Icon name="palmtree" size={38} stroke={1.5} />
               : <Icon name="coffee" size={38} stroke={1.5} />}
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
@@ -927,12 +927,14 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 700 }}>
-              <Icon name="moon" size={18} style={{ color: 'var(--c-amber)' }} /> Long break
+              <Icon name="palmtree" size={18} style={{ color: 'var(--c-amber)' }} /> Long break
             </span>
             <span style={{ color: 'var(--c-amber)', fontWeight: 700, fontSize: 15 }}>{draft.longBreakMins} min</span>
           </button>
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onEndHere}>End here</button>
+            <button className="btn btn-ghost" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} onClick={onEndHere}>
+              <Icon name="stop" size={15} /> End here
+            </button>
             <button className="btn btn-accent" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} onClick={onSkipToNext}>
               <Icon name="play" size={15} /> Keep going
             </button>
@@ -962,14 +964,18 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
           <div style={{ display: 'flex', gap: 10 }}>
             {isLongBreak ? (
               <>
-                <button className="btn btn-ghost" onClick={onEndHere}>Done for now</button>
+                <button className="btn btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 7 }} onClick={onEndHere}>
+                  <Icon name="stop" size={15} /> Done for now
+                </button>
                 <button className="btn btn-accent" onClick={onStartNew} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <Icon name="play" size={15} /> New session
                 </button>
               </>
             ) : (
               <>
-                <button className="btn btn-ghost" onClick={onEndHere}>End here</button>
+                <button className="btn btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 7 }} onClick={onEndHere}>
+                  <Icon name="stop" size={15} /> End here
+                </button>
                 <button className="btn btn-accent" onClick={onSkipToNext} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <Icon name="play" size={15} /> Start Round {nextRound}
                 </button>
@@ -1109,28 +1115,28 @@ function LofiBar({ current, onPlay, onStop }: {
 
 function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void }) {
   // wrapperRef is a plain React div whose *children* React never touches.
-  // We create the YouTube target div imperatively so React and the YT API
-  // never fight over the same DOM node (which causes the removeChild error).
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const playerRef  = useRef<YTPlayerInstance | null>(null)
-  const volumeRef  = useRef(70)
+  const wrapperRef  = useRef<HTMLDivElement>(null)
+  const playerRef   = useRef<YTPlayerInstance | null>(null)
+  const volumeRef   = useRef(70)
+  const videoIdRef  = useRef(videoId)   // always-current, read in init closure
+  videoIdRef.current = videoId
   const [volume, setVolume] = useState(70)
 
+  // Init the player ONCE on mount — no videoId in deps.
+  // Destroying and recreating on every station switch would lose the browser's
+  // autoplay trust, forcing the user to click the YouTube play button again.
   useEffect(() => {
     let destroyed = false
-    // Imperatively created — React has zero knowledge of this element
     const div = document.createElement('div')
     wrapperRef.current?.appendChild(div)
 
     function init() {
       if (destroyed || !div.isConnected) return
-      const player = new window.YT!.Player(div, {
-        videoId,
-        width: '100%',
-        height: '148',
-        // Start muted so the browser's autoplay policy allows it,
-        // then immediately set volume and unmute in onReady.
-        playerVars: { autoplay: 1, mute: 1, loop: 1, playlist: videoId },
+      new window.YT!.Player(div, {
+        videoId: videoIdRef.current,
+        width: '100%', height: '148',
+        // Start muted so the browser allows autoplay, then unmute in onReady.
+        playerVars: { autoplay: 1, mute: 1, loop: 1, playlist: videoIdRef.current },
         events: {
           onReady(e) {
             if (!destroyed) {
@@ -1141,7 +1147,6 @@ function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void
           },
         },
       })
-      if (!destroyed) playerRef.current = player
     }
 
     if (window.YT?.Player) {
@@ -1160,9 +1165,17 @@ function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void
       destroyed = true
       playerRef.current?.destroy()
       playerRef.current = null
-      // Remove our imperative div — safe because React never inserted it
       if (div.parentNode) div.parentNode.removeChild(div)
     }
+  }, []) // mount-only
+
+  // When the station changes while the player is live, swap via loadVideoById —
+  // this reuses the existing trusted player so no second click is needed.
+  useEffect(() => {
+    if (playerRef.current) {
+      playerRef.current.loadVideoById(videoId)
+    }
+    // If player isn't ready yet, onReady reads videoIdRef.current which is already updated.
   }, [videoId])
 
   function handleVolume(v: number) {
