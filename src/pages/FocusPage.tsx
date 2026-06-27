@@ -180,28 +180,9 @@ export function FocusPage() {
 
     if (completed) {
       setCompletedRounds(r => r + 1)
-      const isLast = currentRoundRef.current >= draft.totalRounds
-      isLongBreakRef.current = isLast
-      const breakMins = isLast ? draft.longBreakMins : draft.shortBreakMins
-      setBreakSecondsLeft(breakMins * 60)
+      // breakSecondsLeft=0 signals "choosing" — user picks short or long from BreakScreen
+      setBreakSecondsLeft(0)
       setPhase('break')
-
-      breakIntervalRef.current = window.setInterval(() => {
-        setBreakSecondsLeft(s => {
-          if (s <= 1) {
-            clearInterval(breakIntervalRef.current!)
-            breakIntervalRef.current = null
-            if (isLongBreakRef.current) {
-              setTimeout(() => setPhase('done'), 50)
-            } else {
-              // Short break expired — auto-start next round via state
-              setTimeout(() => setPendingAutoRound(currentRoundRef.current + 1), 50)
-            }
-            return 0
-          }
-          return s - 1
-        })
-      }, 1000)
     } else {
       setPhase('done')
     }
@@ -209,6 +190,27 @@ export function FocusPage() {
 
   // Keep the ref fresh so startTicking always calls the latest version
   handleTimerDoneRef.current = handleTimerDone
+
+  // Called from BreakScreen when the user picks a break duration
+  function startBreakCountdown(mins: number, isLong: boolean) {
+    isLongBreakRef.current = isLong
+    setBreakSecondsLeft(mins * 60)
+    breakIntervalRef.current = window.setInterval(() => {
+      setBreakSecondsLeft(s => {
+        if (s <= 1) {
+          clearInterval(breakIntervalRef.current!)
+          breakIntervalRef.current = null
+          if (isLongBreakRef.current) {
+            setTimeout(() => setPhase('done'), 50)
+          } else {
+            setTimeout(() => setPendingAutoRound(currentRoundRef.current + 1), 50)
+          }
+          return 0
+        }
+        return s - 1
+      })
+    }, 1000)
+  }
 
   function startTicking() {
     intervalRef.current = window.setInterval(() => {
@@ -460,6 +462,8 @@ export function FocusPage() {
         onEndHere={endBreak}
         onSkipToNext={skipToNextRound}
         onStartNew={startNewSession}
+        onShortBreak={() => startBreakCountdown(draft.shortBreakMins, false)}
+        onLongBreak={() => startBreakCountdown(draft.longBreakMins, true)}
       />
     )
   }
@@ -777,24 +781,6 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
               </button>
             ))}
           </div>
-          {/* Cycle preview — shows the exact flow so users know when the long break fires */}
-          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: 'var(--surface-soft)', overflowX: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, whiteSpace: 'nowrap', flexWrap: 'nowrap' }}>
-              {Array.from({ length: draft.totalRounds }).map((_, i) => (
-                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 8, padding: '3px 8px', fontWeight: 700 }}>
-                    {draft.plannedMinutes}m
-                  </span>
-                  {i < draft.totalRounds - 1 ? (
-                    <span style={{ color: 'var(--c-sage)', fontWeight: 600 }}>→ ☕ {draft.shortBreakMins}m →</span>
-                  ) : (
-                    <span style={{ color: 'var(--c-amber)', fontWeight: 600 }}>→ 🎉 {draft.longBreakMins}m long break</span>
-                  )}
-                </span>
-              ))}
-            </div>
-          </div>
-
           {/* Break durations — only shown when multi-round */}
           {draft.totalRounds > 1 && (
             <div style={{ display: 'flex', gap: 12, marginTop: 14 }}>
@@ -877,7 +863,7 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
 
 // ─── Break screen ─────────────────────────────────────────────────────────────
 
-function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLeft, onEndHere, onSkipToNext, onStartNew }: {
+function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLeft, onEndHere, onSkipToNext, onStartNew, onShortBreak, onLongBreak }: {
   session:          FocusSession
   draft:            Draft
   currentRound:     number
@@ -886,65 +872,106 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
   onEndHere:        () => void
   onSkipToNext:     () => void
   onStartNew:       () => void
+  onShortBreak:     () => void
+  onLongBreak:      () => void
 }) {
-  const nextRound  = currentRound + 1
+  const nextRound   = currentRound + 1
+  const choosing    = breakSecondsLeft === 0
   const accentColor = isLongBreak ? 'var(--c-amber)' : 'var(--c-sage)'
 
   return (
     <div className="page fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <div style={{ fontSize: 38, marginBottom: 12 }}>{isLongBreak ? '🎉' : '☕'}</div>
+        <div style={{ fontSize: 38, marginBottom: 12 }}>{choosing ? '✅' : isLongBreak ? '🎉' : '☕'}</div>
         <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
-          {isLongBreak
-            ? (draft.totalRounds > 1 ? `All ${draft.totalRounds} rounds done!` : 'Session complete!')
-            : `Round ${currentRound} done`}
+          Round {currentRound} done
         </h1>
-        {!isLongBreak && draft.totalRounds > 1 && (
-          <p className="muted" style={{ fontSize: 13.5, marginBottom: 4 }}>
-            Round {nextRound} of {draft.totalRounds} up next
-          </p>
-        )}
         <p className="faint" style={{ fontSize: 12.5 }}>
           {session.actualMinutes} min focused on "{session.taskName}"
         </p>
       </div>
 
-      {/* Countdown ring */}
-      <div style={{
-        width: 148, height: 148, borderRadius: '50%', border: '3px solid var(--border)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 10, background: 'var(--surface-soft)',
-        boxShadow: `0 0 36px -8px ${accentColor}`,
-      }}>
-        <span style={{ fontSize: 34, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: accentColor, letterSpacing: '-1px' }}>
-          {fmt(breakSecondsLeft)}
-        </span>
-        <span className="muted" style={{ fontSize: 11 }}>{isLongBreak ? 'long break' : 'short break'}</span>
-      </div>
-
-      <p className="faint" style={{ fontSize: 11.5, marginBottom: 28, textAlign: 'center', maxWidth: 260, lineHeight: 1.6 }}>
-        {isLongBreak
-          ? 'Ends automatically — or close when you\'re ready.'
-          : 'Round starts automatically — or skip the break anytime.'}
-      </p>
-
-      <div style={{ display: 'flex', gap: 10 }}>
-        {isLongBreak ? (
-          <>
-            <button className="btn btn-ghost" onClick={onEndHere}>Done for now</button>
-            <button className="btn btn-accent" onClick={onStartNew} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Icon name="play" size={15} /> New session
+      {choosing ? (
+        /* ── Break choice — user picks short or long ── */
+        <div style={{ width: '100%', maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p className="muted" style={{ textAlign: 'center', fontSize: 14, marginBottom: 6 }}>How long a break?</p>
+          <button
+            className="btn"
+            onClick={onShortBreak}
+            style={{
+              width: '100%', padding: '14px 20px', borderRadius: 16,
+              background: 'var(--surface-soft)', border: '2px solid var(--c-sage)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              cursor: 'pointer', transition: 'all .15s',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 700 }}>
+              ☕ Short break
+            </span>
+            <span style={{ color: 'var(--c-sage)', fontWeight: 700, fontSize: 15 }}>{draft.shortBreakMins} min</span>
+          </button>
+          <button
+            className="btn"
+            onClick={onLongBreak}
+            style={{
+              width: '100%', padding: '14px 20px', borderRadius: 16,
+              background: 'var(--surface-soft)', border: '2px solid var(--c-amber)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              cursor: 'pointer', transition: 'all .15s',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 700 }}>
+              🎉 Long break
+            </span>
+            <span style={{ color: 'var(--c-amber)', fontWeight: 700, fontSize: 15 }}>{draft.longBreakMins} min</span>
+          </button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onEndHere}>End here</button>
+            <button className="btn btn-accent" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} onClick={onSkipToNext}>
+              <Icon name="play" size={15} /> Keep going
             </button>
-          </>
-        ) : (
-          <>
-            <button className="btn btn-ghost" onClick={onEndHere}>End here</button>
-            <button className="btn btn-accent" onClick={onSkipToNext} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Icon name="play" size={15} /> Start Round {nextRound}
-            </button>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      ) : (
+        /* ── Countdown ── */
+        <>
+          <div style={{
+            width: 148, height: 148, borderRadius: '50%', border: '3px solid var(--border)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 10, background: 'var(--surface-soft)',
+            boxShadow: `0 0 36px -8px ${accentColor}`,
+          }}>
+            <span style={{ fontSize: 34, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: accentColor, letterSpacing: '-1px' }}>
+              {fmt(breakSecondsLeft)}
+            </span>
+            <span className="muted" style={{ fontSize: 11 }}>{isLongBreak ? 'long break' : 'short break'}</span>
+          </div>
+
+          <p className="faint" style={{ fontSize: 11.5, marginBottom: 28, textAlign: 'center', maxWidth: 260, lineHeight: 1.6 }}>
+            {isLongBreak
+              ? "Ends automatically — or close when you're ready."
+              : 'Round starts automatically — or skip the break anytime.'}
+          </p>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            {isLongBreak ? (
+              <>
+                <button className="btn btn-ghost" onClick={onEndHere}>Done for now</button>
+                <button className="btn btn-accent" onClick={onStartNew} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <Icon name="play" size={15} /> New session
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn btn-ghost" onClick={onEndHere}>End here</button>
+                <button className="btn btn-accent" onClick={onSkipToNext} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <Icon name="play" size={15} /> Start Round {nextRound}
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
