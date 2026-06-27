@@ -257,6 +257,7 @@ function SkipPromptCard({
       )}
       <div style={{ display: 'flex', gap: 8, marginLeft: 44 }}>
         <input
+          name="skip-reason"
           className="field"
           style={{ flex: 1 }}
           placeholder="Totally optional…"

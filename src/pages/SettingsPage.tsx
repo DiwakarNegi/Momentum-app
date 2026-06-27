@@ -174,6 +174,8 @@ export function SettingsPage({ palette, onSignOut }: Props) {
               {importing ? 'Importing…' : 'Import'}
             </button>
             <input
+              id="import-file"
+              name="import-file"
               ref={fileRef}
               type="file"
               accept=".json,application/json"

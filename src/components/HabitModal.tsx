@@ -87,6 +87,8 @@ export function HabitModal({ habit, onClose }: Props) {
             <Icon name={form.icon} size={28} />
           </div>
           <input
+            id="habit-name"
+            name="habit-name"
             className="field"
             style={{ flex: 1 }}
             placeholder="Habit name"
@@ -157,6 +159,8 @@ export function HabitModal({ habit, onClose }: Props) {
             <span className="muted" style={{ fontSize: 13.5 }}>Target</span>
             <div style={{ flex: 1 }}>
               <input
+                id="habit-target"
+                name="target-per-week"
                 type="range"
                 className="mi-range"
                 min={1} max={7}

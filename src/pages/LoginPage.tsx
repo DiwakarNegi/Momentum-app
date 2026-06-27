@@ -79,8 +79,10 @@ export function LoginPage() {
           <form className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 16 }} onSubmit={handleSubmit}>
             {mode === 'signup' && (
               <div>
-                <label className="eyebrow" style={{ display: 'block', marginBottom: 7 }}>Your name</label>
+                <label htmlFor="auth-name" className="eyebrow" style={{ display: 'block', marginBottom: 7 }}>Your name</label>
                 <input
+                  id="auth-name"
+                  name="name"
                   className="field"
                   type="text"
                   placeholder="What should we call you?"
@@ -94,8 +96,10 @@ export function LoginPage() {
               </div>
             )}
             <div>
-              <label className="eyebrow" style={{ display: 'block', marginBottom: 7 }}>Email</label>
+              <label htmlFor="auth-email" className="eyebrow" style={{ display: 'block', marginBottom: 7 }}>Email</label>
               <input
+                id="auth-email"
+                name="email"
                 className="field"
                 type="email"
                 placeholder="you@example.com"
@@ -107,8 +111,10 @@ export function LoginPage() {
               />
             </div>
             <div>
-              <label className="eyebrow" style={{ display: 'block', marginBottom: 7 }}>Password</label>
+              <label htmlFor="auth-password" className="eyebrow" style={{ display: 'block', marginBottom: 7 }}>Password</label>
               <input
+                id="auth-password"
+                name="password"
                 className="field"
                 type="password"
                 placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}

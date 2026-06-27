@@ -253,7 +253,7 @@ export function FocusPage() {
 
         {showCapture && (
           <div className="card card-pad" style={{ width: '100%', maxWidth: 480, marginBottom: 12, display: 'flex', gap: 8 }}>
-            <input className="field" style={{ flex: 1 }} placeholder="Park the thought, stay in the session…" value={captureText} onChange={e => setCaptureText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') captureDistraction() }} autoFocus maxLength={200} />
+            <input id="capture-thought" name="capture" className="field" style={{ flex: 1 }} placeholder="Park the thought, stay in the session…" value={captureText} onChange={e => setCaptureText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') captureDistraction() }} autoFocus maxLength={200} />
             <button className="btn btn-accent btn-sm" onClick={captureDistraction}>Park it</button>
           </div>
         )}
@@ -261,7 +261,7 @@ export function FocusPage() {
         {showNotepad && (
           <div className="card card-pad" style={{ width: '100%', maxWidth: 480, marginBottom: 12 }}>
             <div className="eyebrow" style={{ marginBottom: 8 }}>Session notes</div>
-            <textarea className="field" style={{ width: '100%', boxSizing: 'border-box', minHeight: 100, resize: 'vertical' }} placeholder="Jot anything down — ideas, links, things to follow up on…" value={notes} onChange={e => setNotes(e.target.value)} maxLength={2000} />
+            <textarea id="session-notes" name="notes" className="field" style={{ width: '100%', boxSizing: 'border-box', minHeight: 100, resize: 'vertical' }} placeholder="Jot anything down — ideas, links, things to follow up on…" value={notes} onChange={e => setNotes(e.target.value)} maxLength={2000} />
           </div>
         )}
 
@@ -414,6 +414,8 @@ function TaskList({ incomplete, complete, todayDateStr, onLaunch }: {
       {/* Quick-add input */}
       <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, marginBottom: incomplete.length + complete.length > 0 ? 12 : 0 }}>
         <input
+          id="focus-task-add"
+          name="task"
           className="field"
           style={{ flex: 1 }}
           placeholder="Add a task for today…"
@@ -521,6 +523,8 @@ function TaskRow({ task, onLaunch }: { task: FocusTask; onLaunch: () => void }) 
       {/* Title */}
       {editing ? (
         <input
+          id={`task-edit-${task.id}`}
+          name="task-title"
           className="field"
           style={{ flex: 1, padding: '3px 8px', fontSize: 14 }}
           value={val}
@@ -593,6 +597,8 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
         <div>
           <div className="eyebrow" style={{ marginBottom: 9 }}>What are you working on?</div>
           <input
+            id="session-task-name"
+            name="task-name"
             className="field"
             style={{ width: '100%', boxSizing: 'border-box' }}
             placeholder="e.g. Portfolio intro, cover letter for Acme…"
@@ -609,6 +615,8 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
             Not the whole task — just the one thing that breaks the ice. "Open the doc" counts.
           </p>
           <input
+            id="session-first-step"
+            name="first-step"
             className="field"
             style={{ width: '100%', boxSizing: 'border-box' }}
             placeholder="e.g. Open the file and write one sentence, even a bad one…"
@@ -662,6 +670,8 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
                 }}
               >−</button>
               <input
+                id="session-duration"
+                name="planned-minutes"
                 type="number"
                 min={1} max={180}
                 value={draft.plannedMinutes}

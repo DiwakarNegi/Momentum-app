@@ -130,6 +130,8 @@ export function ReflectPage() {
           </p>
 
           <textarea
+            id="reflect-response"
+            name="response"
             className="field"
             style={{ width: '100%', boxSizing: 'border-box', minHeight: 76, resize: 'vertical' }}
             value={response}

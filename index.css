@@ -14,8 +14,8 @@
   --surface-2:   #2a241c;
   --surface-soft:#2f2820;
   --ink:         #f2ebdf;
-  --ink-muted:   #ab9d89;
-  --ink-faint:   #7d7060;
+  --ink-muted:   #c0af9d;
+  --ink-faint:   #9e8e7c;
   --border:      #342b20;
   --border-soft: #271f17;
 
@@ -51,8 +51,8 @@
   --surface-2:   #241d31;
   --surface-soft:#2a2237;
   --ink:         #ece9f4;
-  --ink-muted:   #a79cbd;
-  --ink-faint:   #75698a;
+  --ink-muted:   #bcafd3;
+  --ink-faint:   #9489aa;
   --border:      #2d2540;
   --border-soft: #221b30;
   --accent:        #c3b1f5;
@@ -69,28 +69,28 @@
 /* ---------- tokens: Forest ---------- */
 [data-palette='forest'] {
   --bg: #0e1311; --bg-2: #121815; --surface: #19211c; --surface-2: #202b24; --surface-soft: #26312a;
-  --ink: #e9f1ea; --ink-muted: #9db0a4; --ink-faint: #6d7e74; --border: #27332b; --border-soft: #1d2620;
+  --ink: #e9f1ea; --ink-muted: #b4c4bb; --ink-faint: #8ea095; --border: #27332b; --border-soft: #1d2620;
   --accent: #8fd4a6; --accent-strong: #79c193; --on-accent: #0e1311;
 }
 
 /* ---------- tokens: Ocean ---------- */
 [data-palette='ocean'] {
   --bg: #0b101a; --bg-2: #0f1521; --surface: #151c2b; --surface-2: #1d2738; --surface-soft: #232f43;
-  --ink: #e7edf7; --ink-muted: #9aa8c0; --ink-faint: #6b768f; --border: #243047; --border-soft: #1a2335;
+  --ink: #e7edf7; --ink-muted: #b1bdd4; --ink-faint: #8896ad; --border: #243047; --border-soft: #1a2335;
   --accent: #8fb8ee; --accent-strong: #79a6e6; --on-accent: #0b101a;
 }
 
 /* ---------- tokens: Clay ---------- */
 [data-palette='clay'] {
   --bg: #17100d; --bg-2: #1c1410; --surface: #241813; --surface-2: #2f201a; --surface-soft: #352620;
-  --ink: #f4e7df; --ink-muted: #bb9d8e; --ink-faint: #8a6f62; --border: #382620; --border-soft: #2a1c17;
+  --ink: #f4e7df; --ink-muted: #ccb2a5; --ink-faint: #a98f82; --border: #382620; --border-soft: #2a1c17;
   --accent: #f0a98f; --accent-strong: #e8967a; --on-accent: #17100d;
 }
 
 /* ---------- tokens: Mocha ---------- */
 [data-palette='mocha'] {
   --bg: #141009; --bg-2: #19130c; --surface: #221a11; --surface-2: #2c2217; --surface-soft: #33281b;
-  --ink: #f0e7d6; --ink-muted: #b6a587; --ink-faint: #857761; --border: #352a1b; --border-soft: #281f14;
+  --ink: #f0e7d6; --ink-muted: #c8b99e; --ink-faint: #a5967d; --border: #352a1b; --border-soft: #281f14;
   --accent: #e8c279; --accent-strong: #dcb062; --on-accent: #141009;
 }
 
@@ -194,8 +194,8 @@ body::before {
 }
 .card-pad { padding: 22px; }
 .eyebrow {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--ink-faint);
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-muted);
 }
 .muted { color: var(--ink-muted); }
 .faint { color: var(--ink-faint); }

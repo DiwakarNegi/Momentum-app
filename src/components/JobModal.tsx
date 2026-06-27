@@ -91,6 +91,8 @@ export function JobModal({ app, onClose }: Props) {
         {/* Company */}
         <div className="eyebrow" style={{ marginBottom: 7 }}>Company *</div>
         <input
+          id="job-company"
+          name="company"
           type="text"
           className="field"
           style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14 }}
@@ -104,6 +106,8 @@ export function JobModal({ app, onClose }: Props) {
         {/* Role */}
         <div className="eyebrow" style={{ marginBottom: 7 }}>Role *</div>
         <input
+          id="job-role"
+          name="role"
           type="text"
           className="field"
           style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14 }}
@@ -116,6 +120,8 @@ export function JobModal({ app, onClose }: Props) {
         {/* Link */}
         <div className="eyebrow" style={{ marginBottom: 7 }}>Job link <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></div>
         <input
+          id="job-link"
+          name="link"
           type="url"
           className="field"
           style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14 }}
@@ -157,6 +163,8 @@ export function JobModal({ app, onClose }: Props) {
         {/* Notes */}
         <div className="eyebrow" style={{ marginBottom: 7 }}>Notes <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></div>
         <textarea
+          id="job-notes"
+          name="notes"
           className="field"
           style={{ width: '100%', boxSizing: 'border-box', minHeight: 72, resize: 'vertical', marginBottom: 20 }}
           value={form.notes}
