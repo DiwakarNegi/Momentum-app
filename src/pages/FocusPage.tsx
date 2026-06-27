@@ -14,13 +14,15 @@ import type { FocusSession, FocusTask } from '../db/types'
 type Phase = 'idle' | 'setup' | 'active' | 'paused' | 'break' | 'done'
 
 interface Draft {
-  taskName:       string
-  firstStep:      string
-  plannedMinutes: number
-  totalRounds:    number   // 1–4 work blocks per Pomodoro set
-  shortBreakMins: number   // break between rounds
-  longBreakMins:  number   // break after final round
-  taskId?:        string
+  taskName:         string
+  firstStep:        string
+  plannedMinutes:   number
+  totalRounds:      number   // 1–4 work blocks per Pomodoro set
+  shortBreakMins:   number   // break between rounds
+  longBreakMins:    number   // break after final round
+  pulseEnabled:     boolean  // gentle mid-session check-in overlay
+  pulseIntervalMins: number  // how often the pulse fires
+  taskId?:          string
 }
 
 const DURATIONS    = [5, 15, 25, 50]
@@ -31,7 +33,10 @@ const LONG_BREAKS  = [10, 15, 20]
 const DEFAULT_DRAFT: Draft = {
   taskName: '', firstStep: '', plannedMinutes: 25,
   totalRounds: 4, shortBreakMins: 5, longBreakMins: 15,
+  pulseEnabled: false, pulseIntervalMins: 20,
 }
+
+const PULSE_INTERVALS = [10, 15, 20]
 
 // ─── Timer helpers ────────────────────────────────────────────────────────────
 
@@ -69,6 +74,7 @@ export function FocusPage() {
   const [showCapture,      setShowCapture]      = useState(false)
   const [showNotepad,      setShowNotepad]      = useState(false)
   const [savedSession,     setSavedSession]     = useState<FocusSession | null>(null)
+  const [showPulse,        setShowPulse]        = useState(false)
 
   // ── Round tracking ─────────────────────────────────────────────────────────
   // Use both state (for display) and refs (for logic inside intervals/callbacks
@@ -81,6 +87,7 @@ export function FocusPage() {
 
   const intervalRef      = useRef<number | null>(null)
   const breakIntervalRef = useRef<number | null>(null)
+  const pulseRef         = useRef<number | null>(null)
   const sessions         = useFocusSessions(7)
   const tasks            = useFocusTasks()
 
@@ -92,6 +99,7 @@ export function FocusPage() {
   useEffect(() => () => {
     if (intervalRef.current)      clearInterval(intervalRef.current)
     if (breakIntervalRef.current) clearInterval(breakIntervalRef.current)
+    if (pulseRef.current)         clearInterval(pulseRef.current)
   }, [])
 
   // ── Auto-advance to next round when a short break expires ──────────────────
@@ -113,9 +121,23 @@ export function FocusPage() {
     if (breakIntervalRef.current) { clearInterval(breakIntervalRef.current); breakIntervalRef.current = null }
   }
 
+  function stopPulseCheck() {
+    if (pulseRef.current) { clearInterval(pulseRef.current); pulseRef.current = null }
+  }
+
+  function startPulseCheck() {
+    stopPulseCheck()
+    if (!draft.pulseEnabled) return
+    pulseRef.current = window.setInterval(() => {
+      setShowPulse(true)
+    }, draft.pulseIntervalMins * 60 * 1000)
+  }
+
   // ── Core timer done handler ────────────────────────────────────────────────
   const handleTimerDone = useCallback(async (completed: boolean, remaining: number) => {
     stopTicking()
+    if (pulseRef.current) { clearInterval(pulseRef.current); pulseRef.current = null }
+    setShowPulse(false)
     const actual  = Math.max(1, Math.ceil((totalSeconds - remaining) / 60))
     const session = await saveFocusSession({
       taskId:         draft.taskId,
@@ -190,7 +212,7 @@ export function FocusPage() {
     currentRoundRef.current = 1
     setCompletedRounds(0)
     setPhase('active')
-    setTimeout(startTicking, 0)
+    setTimeout(() => { startTicking(); startPulseCheck() }, 0)
   }
 
   // continueSession: next round in a multi-round block (keeps notes/distractions)
@@ -199,8 +221,9 @@ export function FocusPage() {
     setTotalSeconds(secs)
     setSecondsLeft(secs)
     setSavedSession(null)
+    setShowPulse(false)
     setPhase('active')
-    setTimeout(startTicking, 0)
+    setTimeout(() => { startTicking(); startPulseCheck() }, 0)
   }
 
   // Keep continueSession ref fresh for the auto-advance useEffect
@@ -211,8 +234,13 @@ export function FocusPage() {
     setPhase('setup')
   }
 
-  function pauseSession()  { stopTicking(); setPhase('paused') }
-  function resumeSession() { setPhase('active'); startTicking() }
+  function pauseSession()  { stopTicking(); stopPulseCheck(); setShowPulse(false); setPhase('paused') }
+  function resumeSession() { setPhase('active'); startTicking(); startPulseCheck() }
+
+  function handlePulseLostFocus() {
+    setDistractions(prev => [...prev, 'Focus check-in: lost the thread'])
+    setShowPulse(false)
+  }
 
   function captureDistraction() {
     if (!captureText.trim()) return
@@ -224,6 +252,8 @@ export function FocusPage() {
   function resetToIdle() {
     stopTicking()
     stopBreak()
+    stopPulseCheck()
+    setShowPulse(false)
     setPhase('idle')
     setNotes('')
     setDistractions([])
@@ -350,6 +380,34 @@ export function FocusPage() {
             End session
           </button>
         </div>
+
+        {/* Focus Pulse overlay — slides in gently when mid-session check-in fires */}
+        {showPulse && phase === 'active' && (
+          <div style={{
+            position: 'fixed', bottom: 88, left: '50%', transform: 'translateX(-50%)',
+            width: 'min(340px, calc(100vw - 40px))',
+            background: 'var(--card)', borderRadius: 22,
+            boxShadow: '0 8px 48px rgba(0,0,0,0.24), 0 0 0 1px var(--border)',
+            padding: '20px 22px', zIndex: 200,
+            animation: 'fade-up .25s ease',
+          }}>
+            <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Still with it? 👀</p>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 4, lineHeight: 1.5 }}>
+              {draft.taskName}
+            </p>
+            <p className="faint" style={{ fontSize: 11.5, marginBottom: 16 }}>
+              {Math.floor((totalSeconds - secondsLeft) / 60)} min in
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={handlePulseLostFocus}>
+                Lost the thread
+              </button>
+              <button className="btn btn-accent btn-sm" style={{ flex: 1 }} onClick={() => setShowPulse(false)}>
+                Still here ✓
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -687,6 +745,44 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Focus Pulse */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: draft.pulseEnabled ? 10 : 0 }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Focus Pulse</div>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
+                A gentle "Still with it?" check-in mid-session
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={draft.pulseEnabled}
+              onClick={() => set('pulseEnabled', !draft.pulseEnabled)}
+              className={`toggle-track ${draft.pulseEnabled ? 'on' : 'off'}`}
+              style={{ flexShrink: 0 }}
+            >
+              <span className="toggle-thumb" />
+            </button>
+          </div>
+          {draft.pulseEnabled && (
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 7 }}>Check in every</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {PULSE_INTERVALS.map(n => (
+                  <button key={n} onClick={() => set('pulseIntervalMins', n)} aria-pressed={draft.pulseIntervalMins === n}
+                    style={{ flex: 1, padding: '8px 0', borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
+                      background: draft.pulseIntervalMins === n ? 'var(--accent)' : 'var(--surface-soft)',
+                      color:      draft.pulseIntervalMins === n ? 'var(--on-accent)' : 'var(--ink-muted)',
+                      boxShadow:  draft.pulseIntervalMins === n ? `0 0 14px -4px var(--accent)` : 'none' }}>
+                    {n} min
+                  </button>
+                ))}
               </div>
             </div>
           )}
