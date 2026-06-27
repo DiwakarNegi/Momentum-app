@@ -17,27 +17,32 @@ interface Draft {
   taskName:       string
   firstStep:      string
   plannedMinutes: number
-  taskId?:        string   // set when launched from a task card
+  totalRounds:    number   // 1–4 work blocks per Pomodoro set
+  shortBreakMins: number   // break between rounds
+  longBreakMins:  number   // break after final round
+  taskId?:        string
 }
 
-const DURATIONS = [5, 15, 25, 50]
+const DURATIONS    = [5, 15, 25, 50]
+const ROUND_OPTS   = [1, 2, 3, 4]
+const SHORT_BREAKS = [3, 5, 10]
+const LONG_BREAKS  = [10, 15, 20]
 
-// ─── Timer orb helpers ────────────────────────────────────────────────────────
+const DEFAULT_DRAFT: Draft = {
+  taskName: '', firstStep: '', plannedMinutes: 25,
+  totalRounds: 4, shortBreakMins: 5, longBreakMins: 15,
+}
+
+// ─── Timer helpers ────────────────────────────────────────────────────────────
 
 function lerp(a: number, b: number, t: number) { return Math.round(a + (b - a) * t) }
 
 function timerRGB(pct: number): [number, number, number] {
-  const S: [number,number,number] = [167, 212, 175]  // sage — calm, plenty of time
-  const A: [number,number,number] = [232, 194, 121]  // amber — in the zone
-  const C: [number,number,number] = [232, 160, 143]  // coral — home stretch
-  if (pct > 66) {
-    const t = (100 - pct) / 34
-    return [lerp(S[0],A[0],t), lerp(S[1],A[1],t), lerp(S[2],A[2],t)]
-  }
-  if (pct > 33) {
-    const t = 1 - (pct - 33) / 33
-    return [lerp(A[0],C[0],t), lerp(A[1],C[1],t), lerp(A[2],C[2],t)]
-  }
+  const S: [number,number,number] = [167, 212, 175]
+  const A: [number,number,number] = [232, 194, 121]
+  const C: [number,number,number] = [232, 160, 143]
+  if (pct > 66) { const t = (100 - pct) / 34; return [lerp(S[0],A[0],t), lerp(S[1],A[1],t), lerp(S[2],A[2],t)] }
+  if (pct > 33) { const t = 1 - (pct - 33) / 33; return [lerp(A[0],C[0],t), lerp(A[1],C[1],t), lerp(A[2],C[2],t)] }
   return C
 }
 
@@ -49,39 +54,56 @@ function fmt(s: number) {
 const WAVE_A = 'M0,24 C30,15 60,15 90,24 C120,33 150,33 180,24 C210,15 240,15 270,24 C300,33 330,33 360,24 L360,48 L0,48 Z'
 const WAVE_B = 'M0,24 C30,31 60,31 90,24 C120,17 150,17 180,24 C210,31 240,31 270,24 C300,17 330,17 360,24 L360,48 L0,48 Z'
 
-// ─── Break duration heuristic ─────────────────────────────────────────────────
-
-function breakMinutesFor(plannedMinutes: number) {
-  if (plannedMinutes >= 45) return 10
-  if (plannedMinutes >= 20) return 5
-  return 3
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function FocusPage() {
-  const [phase, setPhase]   = useState<Phase>('idle')
-  const [draft, setDraft]   = useState<Draft>({ taskName: '', firstStep: '', plannedMinutes: 25 })
+  const [phase,     setPhase]     = useState<Phase>('idle')
+  const [draft,     setDraft]     = useState<Draft>(DEFAULT_DRAFT)
 
-  const [totalSeconds,    setTotalSeconds]    = useState(0)
-  const [secondsLeft,     setSecondsLeft]     = useState(0)
+  const [totalSeconds,     setTotalSeconds]     = useState(0)
+  const [secondsLeft,      setSecondsLeft]      = useState(0)
   const [breakSecondsLeft, setBreakSecondsLeft] = useState(0)
-  const [notes,           setNotes]           = useState('')
-  const [distractions,    setDistractions]    = useState<string[]>([])
-  const [captureText,     setCaptureText]     = useState('')
-  const [showCapture,     setShowCapture]     = useState(false)
-  const [showNotepad,     setShowNotepad]     = useState(false)
-  const [savedSession,    setSavedSession]    = useState<FocusSession | null>(null)
+  const [notes,            setNotes]            = useState('')
+  const [distractions,     setDistractions]     = useState<string[]>([])
+  const [captureText,      setCaptureText]      = useState('')
+  const [showCapture,      setShowCapture]      = useState(false)
+  const [showNotepad,      setShowNotepad]      = useState(false)
+  const [savedSession,     setSavedSession]     = useState<FocusSession | null>(null)
+
+  // ── Round tracking ─────────────────────────────────────────────────────────
+  // Use both state (for display) and refs (for logic inside intervals/callbacks
+  // to avoid stale closure bugs with setInterval).
+  const [currentRound,    setCurrentRound]    = useState(1)
+  const [completedRounds, setCompletedRounds] = useState(0)
+  const [pendingAutoRound, setPendingAutoRound] = useState(0)  // 0 = none pending
+  const currentRoundRef   = useRef(1)
+  const isLongBreakRef    = useRef(false)
 
   const intervalRef      = useRef<number | null>(null)
   const breakIntervalRef = useRef<number | null>(null)
   const sessions         = useFocusSessions(7)
   const tasks            = useFocusTasks()
 
+  // ── Latest-ref pattern: always call the freshest version of these functions ─
+  // inside interval callbacks, avoiding stale closure captures.
+  const handleTimerDoneRef   = useRef<(completed: boolean, remaining: number) => Promise<void>>(async () => {})
+  const continueSessionRef   = useRef<() => void>(() => {})
+
   useEffect(() => () => {
     if (intervalRef.current)      clearInterval(intervalRef.current)
     if (breakIntervalRef.current) clearInterval(breakIntervalRef.current)
   }, [])
+
+  // ── Auto-advance to next round when a short break expires ──────────────────
+  useEffect(() => {
+    if (pendingAutoRound <= 0) return
+    currentRoundRef.current = pendingAutoRound
+    setCurrentRound(pendingAutoRound)
+    setPendingAutoRound(0)
+    continueSessionRef.current()
+  }, [pendingAutoRound])
+
+  // ── Interval helpers ───────────────────────────────────────────────────────
 
   function stopTicking() {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
@@ -91,6 +113,7 @@ export function FocusPage() {
     if (breakIntervalRef.current) { clearInterval(breakIntervalRef.current); breakIntervalRef.current = null }
   }
 
+  // ── Core timer done handler ────────────────────────────────────────────────
   const handleTimerDone = useCallback(async (completed: boolean, remaining: number) => {
     stopTicking()
     const actual  = Math.max(1, Math.ceil((totalSeconds - remaining) / 60))
@@ -107,26 +130,36 @@ export function FocusPage() {
     setSavedSession(session)
 
     if (completed) {
-      // Natural end → break phase before done
-      const breakSecs = breakMinutesFor(draft.plannedMinutes) * 60
-      setBreakSecondsLeft(breakSecs)
+      setCompletedRounds(r => r + 1)
+      const isLast = currentRoundRef.current >= draft.totalRounds
+      isLongBreakRef.current = isLast
+      const breakMins = isLast ? draft.longBreakMins : draft.shortBreakMins
+      setBreakSecondsLeft(breakMins * 60)
       setPhase('break')
+
       breakIntervalRef.current = window.setInterval(() => {
         setBreakSecondsLeft(s => {
           if (s <= 1) {
             clearInterval(breakIntervalRef.current!)
             breakIntervalRef.current = null
-            setTimeout(() => setPhase('done'), 50)
+            if (isLongBreakRef.current) {
+              setTimeout(() => setPhase('done'), 50)
+            } else {
+              // Short break expired — auto-start next round via state
+              setTimeout(() => setPendingAutoRound(currentRoundRef.current + 1), 50)
+            }
             return 0
           }
           return s - 1
         })
       }, 1000)
     } else {
-      // Manual end → skip break, go straight to done
       setPhase('done')
     }
   }, [totalSeconds, draft, distractions, notes]) // eslint-disable-line
+
+  // Keep the ref fresh so startTicking always calls the latest version
+  handleTimerDoneRef.current = handleTimerDone
 
   function startTicking() {
     intervalRef.current = window.setInterval(() => {
@@ -134,7 +167,7 @@ export function FocusPage() {
         if (s <= 1) {
           clearInterval(intervalRef.current!)
           intervalRef.current = null
-          setTimeout(() => handleTimerDone(true, 0), 50)
+          setTimeout(() => handleTimerDoneRef.current(true, 0), 50)
           return 0
         }
         return s - 1
@@ -142,6 +175,7 @@ export function FocusPage() {
     }, 1000)
   }
 
+  // beginSession: fresh start (round 1, clears notes/distractions)
   function beginSession() {
     const secs = draft.plannedMinutes * 60
     setTotalSeconds(secs)
@@ -152,12 +186,28 @@ export function FocusPage() {
     setShowCapture(false)
     setShowNotepad(false)
     setSavedSession(null)
+    setCurrentRound(1)
+    currentRoundRef.current = 1
+    setCompletedRounds(0)
     setPhase('active')
     setTimeout(startTicking, 0)
   }
 
+  // continueSession: next round in a multi-round block (keeps notes/distractions)
+  function continueSession() {
+    const secs = draft.plannedMinutes * 60
+    setTotalSeconds(secs)
+    setSecondsLeft(secs)
+    setSavedSession(null)
+    setPhase('active')
+    setTimeout(startTicking, 0)
+  }
+
+  // Keep continueSession ref fresh for the auto-advance useEffect
+  continueSessionRef.current = continueSession
+
   function launchFromTask(task: FocusTask) {
-    setDraft({ taskName: task.title, firstStep: '', plannedMinutes: 25, taskId: task.id })
+    setDraft({ ...DEFAULT_DRAFT, taskName: task.title, firstStep: '', taskId: task.id })
     setPhase('setup')
   }
 
@@ -178,19 +228,34 @@ export function FocusPage() {
     setNotes('')
     setDistractions([])
     setSavedSession(null)
-    setDraft({ taskName: '', firstStep: '', plannedMinutes: 25 })
+    setCurrentRound(1)
+    currentRoundRef.current = 1
+    setCompletedRounds(0)
+    setDraft(DEFAULT_DRAFT)
   }
 
-  // Called from break screen: skip break, start the same session again immediately
-  function startAnotherRound() {
+  // Skip break → start next round immediately
+  function skipToNextRound() {
     stopBreak()
-    beginSession()
+    currentRoundRef.current++
+    setCurrentRound(currentRoundRef.current)
+    continueSession()
   }
 
-  // Called from break screen: skip break, go to done summary
+  // End break → go to done summary
   function endBreak() {
     stopBreak()
     setPhase('done')
+  }
+
+  // After long-break done screen → fresh session
+  function startNewSession() {
+    stopBreak()
+    setCurrentRound(1)
+    currentRoundRef.current = 1
+    setCompletedRounds(0)
+    setDraft(DEFAULT_DRAFT)
+    setPhase('setup')
   }
 
   // ── Setup ──────────────────────────────────────────────────────────────────
@@ -208,11 +273,17 @@ export function FocusPage() {
     return (
       <div className="page fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div style={{ width: '100%', maxWidth: 480, marginBottom: 24 }}>
-          <div className="eyebrow" style={{ marginBottom: 5 }}>Focus session · {draft.plannedMinutes} min</div>
-          <div style={{ fontWeight: 600, fontSize: 17 }}>{draft.taskName}</div>
-          <div className="muted" style={{ fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="arrowRight" size={14} /><em>{draft.firstStep}</em>
+          <div className="eyebrow" style={{ marginBottom: 5 }}>
+            {draft.totalRounds > 1
+              ? `Round ${currentRound} of ${draft.totalRounds} · ${draft.plannedMinutes} min`
+              : `Focus session · ${draft.plannedMinutes} min`}
           </div>
+          <div style={{ fontWeight: 700, fontSize: 17 }}>{draft.taskName}</div>
+          {draft.firstStep && (
+            <div className="muted" style={{ fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="arrowRight" size={14} /><em>{draft.firstStep}</em>
+            </div>
+          )}
         </div>
 
         <div className="orb-wrap" style={{ width: 200, marginBottom: 28 }}>
@@ -275,7 +346,7 @@ export function FocusPage() {
               <Icon name="play" size={16} /> Resume
             </button>
           )}
-          <button className="btn btn-ghost" onClick={() => handleTimerDone(false, secondsLeft)} style={{ color: 'var(--ink-muted)' }}>
+          <button className="btn btn-ghost" onClick={() => handleTimerDoneRef.current(false, secondsLeft)} style={{ color: 'var(--ink-muted)' }}>
             End session
           </button>
         </div>
@@ -289,9 +360,12 @@ export function FocusPage() {
       <BreakScreen
         session={savedSession}
         draft={draft}
+        currentRound={currentRound}
+        isLongBreak={isLongBreakRef.current}
         breakSecondsLeft={breakSecondsLeft}
         onEndHere={endBreak}
-        onStartAnother={startAnotherRound}
+        onSkipToNext={skipToNextRound}
+        onStartNew={startNewSession}
       />
     )
   }
@@ -302,17 +376,19 @@ export function FocusPage() {
     return (
       <DoneScreen
         session={savedSession}
+        draft={draft}
         linkedTask={linkedTask}
-        onStartAnother={() => { setDraft({ taskName: '', firstStep: '', plannedMinutes: 25 }); setPhase('setup') }}
+        completedRounds={completedRounds}
+        onStartAnother={() => { setCurrentRound(1); currentRoundRef.current = 1; setCompletedRounds(0); setDraft(DEFAULT_DRAFT); setPhase('setup') }}
         onBack={resetToIdle}
       />
     )
   }
 
   // ── Idle ───────────────────────────────────────────────────────────────────
-  const todayDateStr = format(new Date(), 'yyyy-MM-dd')
-  const incomplete = tasks?.filter(t => !t.completed) ?? []
-  const complete   = tasks?.filter(t => t.completed)  ?? []
+  const todayDateStr  = format(new Date(), 'yyyy-MM-dd')
+  const incomplete    = tasks?.filter(t => !t.completed) ?? []
+  const complete      = tasks?.filter(t => t.completed)  ?? []
   const todaySessions = sessions?.filter(s => s.date === todayDateStr) ?? []
   const pastSessions  = sessions?.filter(s => s.date !== todayDateStr) ?? []
 
@@ -328,15 +404,8 @@ export function FocusPage() {
         </button>
       </header>
 
-      {/* ── Task list ──────────────────────────────────────────────────────── */}
-      <TaskList
-        incomplete={incomplete}
-        complete={complete}
-        todayDateStr={todayDateStr}
-        onLaunch={launchFromTask}
-      />
+      <TaskList incomplete={incomplete} complete={complete} todayDateStr={todayDateStr} onLaunch={launchFromTask} />
 
-      {/* ── Today's sessions ────────────────────────────────────────────────── */}
       {todaySessions.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div className="eyebrow" style={{ marginBottom: 12 }}>Today's sessions</div>
@@ -346,7 +415,6 @@ export function FocusPage() {
         </div>
       )}
 
-      {/* Empty state */}
       {(sessions?.length ?? 0) === 0 && (tasks?.length ?? 0) === 0 && (
         <div className="card card-pad" style={{ textAlign: 'center', padding: '52px 24px' }}>
           <div className="tile" style={{ width: 56, height: 56, margin: '0 auto 16px', '--tile-c': 'var(--c-sky)' } as React.CSSProperties}>
@@ -354,7 +422,7 @@ export function FocusPage() {
           </div>
           <h2 style={{ fontSize: 18, marginBottom: 8 }}>Start your first session</h2>
           <p className="muted" style={{ fontSize: 14, maxWidth: 300, margin: '0 auto 24px', lineHeight: 1.6 }}>
-            Add tasks above or jump straight into a session — name the task, shrink it to a first move, and let the timer give you permission to begin.
+            Add tasks above or jump straight in — name the task, shrink it to a first move, and let the timer give you permission to begin.
           </p>
           <button className="btn btn-accent" onClick={() => setPhase('setup')} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
             <Icon name="play" size={16} /> Start a session
@@ -362,7 +430,6 @@ export function FocusPage() {
         </div>
       )}
 
-      {/* Past sessions */}
       {pastSessions.length > 0 && (
         <div>
           <div className="eyebrow" style={{ marginBottom: 12 }}>Recent sessions</div>
@@ -401,71 +468,42 @@ function TaskList({ incomplete, complete, todayDateStr, onLaunch }: {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div className="eyebrow">Tasks</div>
         {complete.length > 0 && (
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ fontSize: 11.5, padding: '4px 10px' }}
-            onClick={clearCompletedFocusTasks}
-          >
+          <button className="btn btn-ghost btn-sm" style={{ fontSize: 11.5, padding: '4px 10px' }} onClick={clearCompletedFocusTasks}>
             Clear done
           </button>
         )}
       </div>
 
-      {/* Quick-add input */}
       <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, marginBottom: incomplete.length + complete.length > 0 ? 12 : 0 }}>
-        <input
-          id="focus-task-add"
-          name="task"
-          className="field"
-          style={{ flex: 1 }}
-          placeholder="Add a task for today…"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          maxLength={120}
-        />
+        <input id="focus-task-add" name="task" className="field" style={{ flex: 1 }} placeholder="Add a task for today…" value={input} onChange={e => setInput(e.target.value)} maxLength={120} />
         <button className="btn btn-ghost btn-sm" type="submit" disabled={!input.trim()} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <Icon name="plus" size={15} /> Add
         </button>
       </form>
 
-      {/* Carried-over tasks — showcased first, calm framing (never "overdue") */}
       {carriedOver.length > 0 && (
         <div style={{ marginBottom: addedToday.length > 0 ? 14 : 4 }}>
-          <div className="faint" style={{ fontSize: 11.5, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Still open
-          </div>
+          <div className="faint" style={{ fontSize: 11.5, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Still open</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {carriedOver.map(t => (
-              <TaskRow key={t.id} task={t} onLaunch={() => onLaunch(t)} />
-            ))}
+            {carriedOver.map(t => <TaskRow key={t.id} task={t} onLaunch={() => onLaunch(t)} />)}
           </div>
         </div>
       )}
 
-      {/* Today's tasks */}
       {addedToday.length > 0 && (
         <div>
           {carriedOver.length > 0 && (
-            <div className="faint" style={{ fontSize: 11.5, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Added today
-            </div>
+            <div className="faint" style={{ fontSize: 11.5, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Added today</div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {addedToday.map(t => (
-              <TaskRow key={t.id} task={t} onLaunch={() => onLaunch(t)} />
-            ))}
+            {addedToday.map(t => <TaskRow key={t.id} task={t} onLaunch={() => onLaunch(t)} />)}
           </div>
         </div>
       )}
 
-      {/* Completed tasks toggle */}
       {complete.length > 0 && (
         <div style={{ marginTop: incomplete.length > 0 ? 10 : 0 }}>
-          <button
-            onClick={() => setShowDone(v => !v)}
-            className="faint"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 5, padding: '4px 0' }}
-          >
+          <button onClick={() => setShowDone(v => !v)} className="faint" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 5, padding: '4px 0' }}>
             <span style={{ transform: showDone ? 'rotate(90deg)' : 'none', display: 'inline-flex', transition: 'transform .15s' }}>
               <Icon name="chevronRight" size={13} />
             </span>
@@ -498,72 +536,29 @@ function TaskRow({ task, onLaunch }: { task: FocusTask; onLaunch: () => void }) 
   }
 
   return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 0', borderBottom: '1px solid var(--border)',
-      }}
-      onMouseLeave={() => { if (editing) commitEdit() }}
-    >
-      {/* Checkbox */}
-      <button
-        onClick={() => toggleFocusTask(task.id)}
-        aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
-        style={{
-          flexShrink: 0, width: 20, height: 20, borderRadius: '50%', cursor: 'pointer',
-          border: task.completed ? 'none' : '2px solid var(--border)',
-          background: task.completed ? 'var(--c-sage)' : 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'all .15s',
-        }}
-      >
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}
+      onMouseLeave={() => { if (editing) commitEdit() }}>
+      <button onClick={() => toggleFocusTask(task.id)} aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
+        style={{ flexShrink: 0, width: 20, height: 20, borderRadius: '50%', cursor: 'pointer', border: task.completed ? 'none' : '2px solid var(--border)', background: task.completed ? 'var(--c-sage)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' }}>
         {task.completed && <Icon name="check" size={11} style={{ color: '#fff' }} />}
       </button>
 
-      {/* Title */}
       {editing ? (
-        <input
-          id={`task-edit-${task.id}`}
-          name="task-title"
-          className="field"
-          style={{ flex: 1, padding: '3px 8px', fontSize: 14 }}
-          value={val}
-          onChange={e => setVal(e.target.value)}
-          onBlur={commitEdit}
-          onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') { setVal(task.title); setEditing(false) } }}
-          autoFocus
-          maxLength={120}
-        />
+        <input id={`task-edit-${task.id}`} name="task-title" className="field" style={{ flex: 1, padding: '3px 8px', fontSize: 14 }} value={val} onChange={e => setVal(e.target.value)} onBlur={commitEdit} onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') { setVal(task.title); setEditing(false) } }} autoFocus maxLength={120} />
       ) : (
-        <span
-          style={{
-            flex: 1, fontSize: 14, lineHeight: 1.35, cursor: 'text',
-            textDecoration: task.completed ? 'line-through' : 'none',
-            color: task.completed ? 'var(--ink-faint)' : 'var(--ink)',
-          }}
-          onDoubleClick={() => { if (!task.completed) { setVal(task.title); setEditing(true) } }}
-        >
+        <span style={{ flex: 1, fontSize: 14, lineHeight: 1.35, cursor: 'text', textDecoration: task.completed ? 'line-through' : 'none', color: task.completed ? 'var(--ink-faint)' : 'var(--ink)' }}
+          onDoubleClick={() => { if (!task.completed) { setVal(task.title); setEditing(true) } }}>
           {task.title}
         </span>
       )}
 
-      {/* Actions */}
       {!task.completed && (
-        <button
-          className="btn btn-accent btn-sm"
-          onClick={onLaunch}
-          title="Start a focus session on this task"
-          style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px' }}
-        >
+        <button className="btn btn-accent btn-sm" onClick={onLaunch} title="Start a focus session on this task"
+          style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px' }}>
           <Icon name="play" size={13} /> Focus
         </button>
       )}
-      <button
-        className="icon-btn"
-        onClick={() => deleteFocusTask(task.id)}
-        aria-label="Delete task"
-        style={{ flexShrink: 0, opacity: 0.5 }}
-      >
+      <button className="icon-btn" onClick={() => deleteFocusTask(task.id)} aria-label="Delete task" style={{ flexShrink: 0, opacity: 0.5 }}>
         <Icon name="close" size={14} />
       </button>
     </div>
@@ -594,118 +589,112 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
       </div>
 
       <div className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* Task */}
         <div>
           <div className="eyebrow" style={{ marginBottom: 9 }}>What are you working on?</div>
-          <input
-            id="session-task-name"
-            name="task-name"
-            className="field"
-            style={{ width: '100%', boxSizing: 'border-box' }}
-            placeholder="e.g. Portfolio intro, cover letter for Acme…"
-            value={draft.taskName}
-            onChange={e => set('taskName', e.target.value)}
-            autoFocus={!draft.taskName}
-            maxLength={100}
-          />
+          <input id="session-task-name" name="task-name" className="field" style={{ width: '100%', boxSizing: 'border-box' }}
+            placeholder="e.g. Portfolio intro, cover letter for Acme…" value={draft.taskName}
+            onChange={e => set('taskName', e.target.value)} autoFocus={!draft.taskName} maxLength={100} />
         </div>
 
+        {/* First step — optional */}
         <div>
-          <div className="eyebrow" style={{ marginBottom: 5 }}>Smallest first move <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>(optional)</span></div>
+          <div className="eyebrow" style={{ marginBottom: 5 }}>
+            Smallest first move <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>(optional)</span>
+          </div>
           <p className="muted" style={{ fontSize: 12.5, marginBottom: 9, lineHeight: 1.55 }}>
             Just the one thing that breaks the ice — "open the doc" counts. Skip if you're ready to go.
           </p>
-          <input
-            id="session-first-step"
-            name="first-step"
-            className="field"
-            style={{ width: '100%', boxSizing: 'border-box' }}
-            placeholder="e.g. Open the file and write one sentence…"
-            value={draft.firstStep}
-            onChange={e => set('firstStep', e.target.value)}
-            autoFocus={!!draft.taskName}
-            maxLength={150}
-          />
+          <input id="session-first-step" name="first-step" className="field" style={{ width: '100%', boxSizing: 'border-box' }}
+            placeholder="e.g. Open the file and write one sentence…" value={draft.firstStep}
+            onChange={e => set('firstStep', e.target.value)} autoFocus={!!draft.taskName} maxLength={150} />
         </div>
 
+        {/* Work duration */}
         <div>
-          <div className="eyebrow" style={{ marginBottom: 9 }}>How long?</div>
-
-          {/* Preset chips */}
+          <div className="eyebrow" style={{ marginBottom: 9 }}>How long per round?</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {DURATIONS.map(d => (
-              <button
-                key={d}
-                onClick={() => set('plannedMinutes', d)}
-                style={{
-                  flex: '1 1 0', minWidth: 52, padding: '10px 0', borderRadius: 14, fontSize: 14, fontWeight: 600,
-                  cursor: 'pointer', border: 'none', transition: 'all .15s',
+              <button key={d} onClick={() => set('plannedMinutes', d)} aria-pressed={draft.plannedMinutes === d}
+                style={{ flex: '1 1 0', minWidth: 52, padding: '10px 0', borderRadius: 14, fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .15s',
                   background: draft.plannedMinutes === d ? 'var(--accent)' : 'var(--surface-soft)',
                   color:      draft.plannedMinutes === d ? 'var(--on-accent)' : 'var(--ink-muted)',
-                  boxShadow:  draft.plannedMinutes === d ? `0 0 16px -4px var(--accent)` : 'none',
-                }}
-                aria-pressed={draft.plannedMinutes === d}
-              >
+                  boxShadow:  draft.plannedMinutes === d ? `0 0 16px -4px var(--accent)` : 'none' }}>
                 {d} min
               </button>
             ))}
           </div>
-
-          {/* Custom stepper — replaces the cheap browser number spinners */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
             <span className="muted" style={{ fontSize: 13 }}>Custom:</span>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center',
-              border: '1.5px solid var(--border)', borderRadius: 12,
-              background: 'var(--surface-soft)',
-            }}>
-              <button
-                type="button"
-                onClick={() => adjustMinutes(-1)}
-                aria-label="Decrease by 1 minute"
-                style={{
-                  width: 36, height: 36, border: 'none', background: 'transparent',
-                  cursor: 'pointer', fontSize: 18, color: 'var(--ink-muted)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  borderRadius: '12px 0 0 12px',
-                }}
-              >−</button>
-              <input
-                id="session-duration"
-                name="planned-minutes"
-                type="number"
-                min={1} max={180}
-                value={draft.plannedMinutes}
+            <div style={{ display: 'inline-flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface-soft)' }}>
+              <button type="button" onClick={() => adjustMinutes(-1)} aria-label="Decrease by 1 minute"
+                style={{ width: 36, height: 36, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px 0 0 12px' }}>−</button>
+              <input id="session-duration" name="planned-minutes" type="number" min={1} max={180} value={draft.plannedMinutes}
                 onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v >= 1 && v <= 180) set('plannedMinutes', v) }}
-                className="stepper-input"
-                style={{
-                  width: 44, border: 'none', background: 'transparent',
-                  textAlign: 'center', fontSize: 14, fontWeight: 600,
-                  color: 'var(--ink)', outline: 'none',
-                }}
-              />
+                className="stepper-input" style={{ width: 44, border: 'none', background: 'transparent', textAlign: 'center', fontSize: 14, fontWeight: 600, color: 'var(--ink)', outline: 'none' }} />
               <span style={{ fontSize: 12, color: 'var(--ink-faint)', paddingRight: 4 }}>min</span>
-              <button
-                type="button"
-                onClick={() => adjustMinutes(1)}
-                aria-label="Increase by 1 minute"
-                style={{
-                  width: 36, height: 36, border: 'none', background: 'transparent',
-                  cursor: 'pointer', fontSize: 18, color: 'var(--ink-muted)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  borderRadius: '0 12px 12px 0',
-                }}
-              >+</button>
+              <button type="button" onClick={() => adjustMinutes(1)} aria-label="Increase by 1 minute"
+                style={{ width: 36, height: 36, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '0 12px 12px 0' }}>+</button>
             </div>
           </div>
         </div>
+
+        {/* Rounds */}
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 9 }}>Rounds</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {ROUND_OPTS.map(n => (
+              <button key={n} onClick={() => set('totalRounds', n)} aria-pressed={draft.totalRounds === n}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 14, fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .15s',
+                  background: draft.totalRounds === n ? 'var(--accent)' : 'var(--surface-soft)',
+                  color:      draft.totalRounds === n ? 'var(--on-accent)' : 'var(--ink-muted)',
+                  boxShadow:  draft.totalRounds === n ? `0 0 16px -4px var(--accent)` : 'none' }}>
+                {n === 1 ? '1' : n}
+              </button>
+            ))}
+          </div>
+          <p className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
+            {draft.totalRounds === 1
+              ? `Single session · ${draft.plannedMinutes} min total`
+              : `${draft.totalRounds} × ${draft.plannedMinutes} min = ${draft.totalRounds * draft.plannedMinutes} min total`}
+          </p>
+
+          {/* Break durations — only shown when multi-round */}
+          {draft.totalRounds > 1 && (
+            <div style={{ display: 'flex', gap: 12, marginTop: 14 }}>
+              <div style={{ flex: 1 }}>
+                <div className="eyebrow" style={{ marginBottom: 7 }}>Short break</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {SHORT_BREAKS.map(n => (
+                    <button key={n} onClick={() => set('shortBreakMins', n)} aria-pressed={draft.shortBreakMins === n}
+                      style={{ flex: 1, padding: '7px 0', borderRadius: 11, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
+                        background: draft.shortBreakMins === n ? 'var(--c-sage)' : 'var(--surface-soft)',
+                        color:      draft.shortBreakMins === n ? 'var(--on-accent)' : 'var(--ink-muted)' }}>
+                      {n}m
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div className="eyebrow" style={{ marginBottom: 7 }}>Long break</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {LONG_BREAKS.map(n => (
+                    <button key={n} onClick={() => set('longBreakMins', n)} aria-pressed={draft.longBreakMins === n}
+                      style={{ flex: 1, padding: '7px 0', borderRadius: 11, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
+                        background: draft.longBreakMins === n ? 'var(--c-amber)' : 'var(--surface-soft)',
+                        color:      draft.longBreakMins === n ? 'var(--on-accent)' : 'var(--ink-muted)' }}>
+                      {n}m
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <button
-        className="btn btn-accent"
-        style={{ width: '100%', marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-        onClick={onStart}
-        disabled={!draft.taskName.trim()}
-      >
+      <button className="btn btn-accent" style={{ width: '100%', marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+        onClick={onStart} disabled={!draft.taskName.trim()}>
         <Icon name="play" size={17} /> Start session
       </button>
     </div>
@@ -714,63 +703,87 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
 
 // ─── Break screen ─────────────────────────────────────────────────────────────
 
-function BreakScreen({ session, draft, breakSecondsLeft, onEndHere, onStartAnother }: {
+function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLeft, onEndHere, onSkipToNext, onStartNew }: {
   session:          FocusSession
   draft:            Draft
+  currentRound:     number
+  isLongBreak:      boolean
   breakSecondsLeft: number
   onEndHere:        () => void
-  onStartAnother:   () => void
+  onSkipToNext:     () => void
+  onStartNew:       () => void
 }) {
+  const nextRound  = currentRound + 1
+  const accentColor = isLongBreak ? 'var(--c-amber)' : 'var(--c-sage)'
+
   return (
     <div className="page fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>☕</div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Break time</h1>
-        <p className="muted" style={{ fontSize: 14 }}>
-          Nice work — {session.actualMinutes} min on "{session.taskName}"
+        <div style={{ fontSize: 38, marginBottom: 12 }}>{isLongBreak ? '🎉' : '☕'}</div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
+          {isLongBreak
+            ? (draft.totalRounds > 1 ? `All ${draft.totalRounds} rounds done!` : 'Session complete!')
+            : `Round ${currentRound} done`}
+        </h1>
+        {!isLongBreak && draft.totalRounds > 1 && (
+          <p className="muted" style={{ fontSize: 13.5, marginBottom: 4 }}>
+            Round {nextRound} of {draft.totalRounds} up next
+          </p>
+        )}
+        <p className="faint" style={{ fontSize: 12.5 }}>
+          {session.actualMinutes} min focused on "{session.taskName}"
         </p>
       </div>
 
-      {/* Soft countdown ring */}
+      {/* Countdown ring */}
       <div style={{
-        width: 148, height: 148, borderRadius: '50%',
-        border: '3px solid var(--border)',
+        width: 148, height: 148, borderRadius: '50%', border: '3px solid var(--border)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 32,
-        background: 'var(--surface-soft)',
-        boxShadow: '0 0 32px -8px var(--c-sage)',
+        marginBottom: 10, background: 'var(--surface-soft)',
+        boxShadow: `0 0 36px -8px ${accentColor}`,
       }}>
-        <span style={{ fontSize: 34, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--c-sage)', letterSpacing: '-1px' }}>
+        <span style={{ fontSize: 34, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: accentColor, letterSpacing: '-1px' }}>
           {fmt(breakSecondsLeft)}
         </span>
-        <span className="muted" style={{ fontSize: 12, marginTop: 2 }}>break</span>
+        <span className="muted" style={{ fontSize: 11 }}>{isLongBreak ? 'long break' : 'short break'}</span>
       </div>
+
+      <p className="faint" style={{ fontSize: 11.5, marginBottom: 28, textAlign: 'center', maxWidth: 260, lineHeight: 1.6 }}>
+        {isLongBreak
+          ? 'Ends automatically — or close when you\'re ready.'
+          : 'Round starts automatically — or skip the break anytime.'}
+      </p>
 
       <div style={{ display: 'flex', gap: 10 }}>
-        <button className="btn btn-ghost" onClick={onEndHere}>End here</button>
-        <button
-          className="btn btn-accent"
-          onClick={onStartAnother}
-          style={{ display: 'flex', alignItems: 'center', gap: 7 }}
-        >
-          <Icon name="play" size={15} /> {draft.plannedMinutes} min again
-        </button>
+        {isLongBreak ? (
+          <>
+            <button className="btn btn-ghost" onClick={onEndHere}>Done for now</button>
+            <button className="btn btn-accent" onClick={onStartNew} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Icon name="play" size={15} /> New session
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn btn-ghost" onClick={onEndHere}>End here</button>
+            <button className="btn btn-accent" onClick={onSkipToNext} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Icon name="play" size={15} /> Start Round {nextRound}
+            </button>
+          </>
+        )}
       </div>
-
-      <p className="muted" style={{ fontSize: 12.5, marginTop: 18, textAlign: 'center', maxWidth: 260, lineHeight: 1.6 }}>
-        Break ends automatically — or jump back in when you're ready.
-      </p>
     </div>
   )
 }
 
 // ─── Done screen ──────────────────────────────────────────────────────────────
 
-function DoneScreen({ session, linkedTask, onStartAnother, onBack }: {
-  session:        FocusSession
-  linkedTask?:    FocusTask
-  onStartAnother: () => void
-  onBack:         () => void
+function DoneScreen({ session, draft, linkedTask, completedRounds, onStartAnother, onBack }: {
+  session:         FocusSession
+  draft:           Draft
+  linkedTask?:     FocusTask
+  completedRounds: number
+  onStartAnother:  () => void
+  onBack:          () => void
 }) {
   const [markedDone, setMarkedDone] = useState(false)
 
@@ -780,6 +793,8 @@ function DoneScreen({ session, linkedTask, onStartAnother, onBack }: {
     setMarkedDone(true)
   }
 
+  const allRoundsDone = completedRounds >= draft.totalRounds && draft.totalRounds > 1
+
   return (
     <div className="page fade-up" style={{ maxWidth: 520 }}>
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
@@ -787,10 +802,12 @@ function DoneScreen({ session, linkedTask, onStartAnother, onBack }: {
           <Icon name={session.completed ? 'check' : 'focus'} size={30} />
         </div>
         <h1 style={{ fontSize: 24, marginBottom: 6 }}>
-          {session.completed ? 'Session complete!' : 'Session ended'}
+          {allRoundsDone ? `${completedRounds}-round block done!` : session.completed ? 'Session complete!' : 'Session ended'}
         </h1>
         <p className="muted" style={{ fontSize: 14 }}>
-          {session.actualMinutes} min focused · {session.completed ? 'Full session' : 'Ended early — still counts'}
+          {draft.totalRounds > 1 && completedRounds > 0
+            ? `${completedRounds} of ${draft.totalRounds} rounds · ${session.completed ? 'Full session' : 'Ended early — still counts'}`
+            : `${session.actualMinutes} min focused · ${session.completed ? 'Full session' : 'Ended early — still counts'}`}
         </p>
       </div>
 
@@ -798,12 +815,13 @@ function DoneScreen({ session, linkedTask, onStartAnother, onBack }: {
         <div style={{ marginBottom: linkedTask || session.distractions.length > 0 || session.notes ? 16 : 0 }}>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Task</div>
           <div style={{ fontWeight: 600, fontSize: 15 }}>{session.taskName}</div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Icon name="arrowRight" size={13} /> {session.firstStep}
-          </div>
+          {session.firstStep && (
+            <div className="muted" style={{ fontSize: 13, marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Icon name="arrowRight" size={13} /> {session.firstStep}
+            </div>
+          )}
         </div>
 
-        {/* Mark task done prompt */}
         {linkedTask && !markedDone && (
           <div style={{ paddingTop: 14, borderTop: '1px solid var(--border)', marginBottom: session.distractions.length > 0 || session.notes ? 14 : 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
