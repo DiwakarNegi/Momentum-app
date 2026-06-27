@@ -26,10 +26,8 @@ interface YTPlayerInstance { setVolume(v: number): void; unMute(): void; loadVid
 // ─── Lofi radio stations ─────────────────────────────────────────────────────
 // All verified active 24/7 YouTube live streams (checked June 2026).
 const STATIONS = [
-  { id: 'chillhop',    label: 'Chillhop',     videoId: '5yx6BWlEVcY', emoji: '🍃' },
-  { id: 'lofi-hiphop', label: 'Lofi Girl',    videoId: 'X4VbdwhkE10', emoji: '🎵' },
-  { id: 'deep-focus',  label: 'Deep Focus',   videoId: 'rTGuBCvT6uk', emoji: '🧠' },
-  { id: 'chill-beats', label: 'Chill Beats',  videoId: 'uOqGBYs4VAc', emoji: '☕' },
+  { id: 'chillhop',    label: 'Chillhop',  videoId: '5yx6BWlEVcY', emoji: '🍃' },
+  { id: 'lofi-hiphop', label: 'Lofi Girl', videoId: 'X4VbdwhkE10', emoji: '🎵' },
 ] as const
 type StationId = typeof STATIONS[number]['id']
 
