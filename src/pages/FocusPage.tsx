@@ -27,7 +27,7 @@ interface YTPlayerInstance { setVolume(v: number): void; unMute(): void; destroy
 // All verified active 24/7 YouTube live streams (checked June 2026).
 const STATIONS = [
   { id: 'chillhop',    label: 'Chillhop',     videoId: '5yx6BWlEVcY', emoji: '🍃' },
-  { id: 'lofi-hiphop', label: 'Lofi Girl',    videoId: 'jfKfPfyJRdk', emoji: '🎵' },
+  { id: 'lofi-hiphop', label: 'Lofi Girl',    videoId: 'X4VbdwhkE10', emoji: '🎵' },
   { id: 'deep-focus',  label: 'Deep Focus',   videoId: 'rTGuBCvT6uk', emoji: '🧠' },
   { id: 'chill-beats', label: 'Chill Beats',  videoId: 'uOqGBYs4VAc', emoji: '☕' },
 ] as const
@@ -882,12 +882,12 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
   return (
     <div className="page fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <div style={{ fontSize: 38, marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center', color: choosing ? 'var(--accent)' : isLongBreak ? 'var(--c-amber)' : 'var(--c-sage)' }}>
           {choosing
-            ? <Icon name="check" size={38} />
+            ? <Icon name="flame" size={38} stroke={1.5} />
             : isLongBreak
-              ? <Icon name="moon" size={38} />
-              : <Icon name="coffee" size={38} />}
+              ? <Icon name="moon" size={38} stroke={1.5} />
+              : <Icon name="coffee" size={38} stroke={1.5} />}
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
           Round {currentRound} done
