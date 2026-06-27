@@ -8,7 +8,15 @@ import {
   clearCompletedFocusTasks, updateFocusTaskTitle,
 } from '../db/operations'
 import type { FocusSession, FocusTask } from '../db/types'
-import { useAmbientAudio, SOUNDS, type SoundId } from '../lib/useAmbientAudio'
+// ─── Lofi radio stations ─────────────────────────────────────────────────────
+// All 24/7 YouTube live streams — royalty-free / properly licensed music.
+const STATIONS = [
+  { id: 'lofi-girl',  label: 'Lofi Girl',    videoId: 'jfKfPfyJRdk', emoji: '🎵' },
+  { id: 'chillhop',  label: 'Chillhop',     videoId: '5yx6BWlEVcY', emoji: '🍃' },
+  { id: 'jazz',      label: 'Jazz Vibes',   videoId: 'HuFYqnbVbzY', emoji: '🎷' },
+  { id: 'dark-lo',   label: 'Dark Lofi',    videoId: 'b1fMo5E0M4I', emoji: '🌙' },
+] as const
+type StationId = typeof STATIONS[number]['id']
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,12 +100,8 @@ export function FocusPage() {
   const sessions         = useFocusSessions(7)
   const tasks            = useFocusTasks()
 
-  // ── Ambient audio ──────────────────────────────────────────────────────────
-  const audio           = useAmbientAudio()
-  const audioFadeRef    = useRef(audio.fade)
-  const audioCurrentRef = useRef<SoundId | null>(null)  // stable ref for interval callbacks
-  const audioVolumeRef  = useRef(0.35)
-  audioFadeRef.current  = audio.fade  // keep ref fresh each render
+  // ── Lofi radio ─────────────────────────────────────────────────────────────
+  const [lofiStation, setLofiStation] = useState<StationId | null>(null)
 
   // ── Latest-ref pattern: always call the freshest version of these functions ─
   // inside interval callbacks, avoiding stale closure captures.
@@ -166,8 +170,6 @@ export function FocusPage() {
       const breakMins = isLast ? draft.longBreakMins : draft.shortBreakMins
       setBreakSecondsLeft(breakMins * 60)
       setPhase('break')
-      // Dim audio during break — audioCurrentRef stays set so it can resume on next round
-      if (audioCurrentRef.current) audioFadeRef.current(0.1, 1500)
 
       breakIntervalRef.current = window.setInterval(() => {
         setBreakSecondsLeft(s => {
@@ -233,8 +235,6 @@ export function FocusPage() {
     setSavedSession(null)
     setShowPulse(false)
     setPhase('active')
-    // Restore audio to full volume when a new round begins
-    if (audioCurrentRef.current) audioFadeRef.current(audioVolumeRef.current, 600)
     setTimeout(() => { startTicking(); startPulseCheck() }, 0)
   }
 
@@ -355,23 +355,14 @@ export function FocusPage() {
           </div>
         )}
 
-        {/* Ambient audio bar */}
-        <AmbientBar
-          current={audio.currentSound}
-          volume={audio.volume}
-          onPlay={id => {
-            audio.play(id, audioVolumeRef.current)
-            audioCurrentRef.current = id
-          }}
-          onStop={() => {
-            audio.stop()
-            audioCurrentRef.current = null
-          }}
-          onVolume={v => {
-            audio.setVolume(v)
-            audioVolumeRef.current = v
-          }}
-        />
+        {/* Lofi radio — YouTube embeds continue playing through breaks */}
+        <LofiBar current={lofiStation} onPlay={setLofiStation} onStop={() => setLofiStation(null)} />
+        {lofiStation && (
+          <LofiPlayer
+            videoId={STATIONS.find(s => s.id === lofiStation)!.videoId}
+            onClose={() => setLofiStation(null)}
+          />
+        )}
 
         <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowCapture(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1027,41 +1018,61 @@ function DoneScreen({ session, draft, linkedTask, completedRounds, onStartAnothe
   )
 }
 
-// ─── Ambient audio bar ───────────────────────────────────────────────────────
+// ─── Lofi radio ──────────────────────────────────────────────────────────────
 
-function AmbientBar({ current, volume, onPlay, onStop, onVolume }: {
-  current:  SoundId | null
-  volume:   number
-  onPlay:   (s: SoundId) => void
-  onStop:   () => void
-  onVolume: (v: number) => void
+function LofiBar({ current, onPlay, onStop }: {
+  current: StationId | null
+  onPlay:  (id: StationId) => void
+  onStop:  () => void
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 14 }}>
-      {(Object.entries(SOUNDS) as [SoundId, { label: string; emoji: string }][]).map(([id, { label, emoji }]) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
+      {STATIONS.map(s => (
         <button
-          key={id}
-          onClick={() => current === id ? onStop() : onPlay(id)}
-          aria-pressed={current === id}
+          key={s.id}
+          onClick={() => current === s.id ? onStop() : onPlay(s.id)}
+          aria-pressed={current === s.id}
           style={{
             display: 'flex', alignItems: 'center', gap: 5,
             padding: '6px 13px', borderRadius: 20, fontSize: 12.5, fontWeight: 600,
             cursor: 'pointer', border: 'none', transition: 'all .15s',
-            background: current === id ? 'var(--accent)' : 'var(--surface-soft)',
-            color:      current === id ? 'var(--on-accent)' : 'var(--ink-muted)',
+            background: current === s.id ? 'var(--accent)' : 'var(--surface-soft)',
+            color:      current === s.id ? 'var(--on-accent)' : 'var(--ink-muted)',
           }}
         >
-          <span>{emoji}</span> {label}
+          <span>{s.emoji}</span> {s.label}
         </button>
       ))}
-      {current && (
-        <input
-          type="range" min={0.05} max={1} step={0.05} value={volume}
-          onChange={e => onVolume(parseFloat(e.target.value))}
-          style={{ width: 76, accentColor: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}
-          aria-label="Audio volume"
-        />
-      )}
+    </div>
+  )
+}
+
+function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void }) {
+  return (
+    <div style={{
+      position: 'relative', width: '100%', maxWidth: 480, marginBottom: 16,
+      borderRadius: 16, overflow: 'hidden',
+      boxShadow: '0 4px 24px rgba(0,0,0,0.22), 0 0 0 1px var(--border)',
+    }}>
+      <iframe
+        src={`https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1`}
+        allow="autoplay; encrypted-media; picture-in-picture"
+        allowFullScreen
+        style={{ width: '100%', height: 148, border: 'none', display: 'block' }}
+        title="Lofi radio"
+      />
+      <button
+        onClick={onClose}
+        aria-label="Stop radio"
+        style={{
+          position: 'absolute', top: 8, right: 8,
+          width: 28, height: 28, borderRadius: '50%',
+          background: 'rgba(0,0,0,0.55)', border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+        }}
+      >
+        <Icon name="close" size={13} />
+      </button>
     </div>
   )
 }
