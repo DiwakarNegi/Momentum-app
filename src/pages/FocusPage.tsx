@@ -882,7 +882,13 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
   return (
     <div className="page fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <div style={{ fontSize: 38, marginBottom: 12 }}>{choosing ? '✅' : isLongBreak ? '🎉' : '☕'}</div>
+        <div style={{ fontSize: 38, marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
+          {choosing
+            ? <Icon name="check" size={38} />
+            : isLongBreak
+              ? <Icon name="moon" size={38} />
+              : <Icon name="coffee" size={38} />}
+        </div>
         <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
           Round {currentRound} done
         </h1>
@@ -906,7 +912,7 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 700 }}>
-              ☕ Short break
+              <Icon name="coffee" size={18} style={{ color: 'var(--c-sage)' }} /> Short break
             </span>
             <span style={{ color: 'var(--c-sage)', fontWeight: 700, fontSize: 15 }}>{draft.shortBreakMins} min</span>
           </button>
@@ -921,7 +927,7 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 700 }}>
-              🎉 Long break
+              <Icon name="moon" size={18} style={{ color: 'var(--c-amber)' }} /> Long break
             </span>
             <span style={{ color: 'var(--c-amber)', fontWeight: 700, fontSize: 15 }}>{draft.longBreakMins} min</span>
           </button>
