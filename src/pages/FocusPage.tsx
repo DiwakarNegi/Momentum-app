@@ -480,6 +480,10 @@ export function FocusPage() {
   const todaySessions = sessions?.filter(s => s.date === todayDateStr) ?? []
   const pastSessions  = sessions?.filter(s => s.date !== todayDateStr) ?? []
 
+  // Today's stats for the idle header stat strip
+  const todayCompletedSessions = todaySessions.filter(s => s.completed)
+  const todayTotalMins = todaySessions.reduce((acc, s) => acc + s.actualMinutes, 0)
+
   return (
     <div className="page fade-up">
       <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -491,6 +495,32 @@ export function FocusPage() {
           <Icon name="play" size={16} /> New session
         </button>
       </header>
+
+      {/* Today's Pomodoro stats — rounds completed + total focused minutes */}
+      {todaySessions.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+          <div className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>
+              {todayCompletedSessions.length}
+            </div>
+            <div className="muted" style={{ fontSize: 12 }}>rounds today</div>
+          </div>
+          <div className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>
+              {todayTotalMins}
+            </div>
+            <div className="muted" style={{ fontSize: 12 }}>min focused</div>
+          </div>
+          {todaySessions.length > 1 && (
+            <div className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>
+                {Math.round(todayTotalMins / todaySessions.length)}
+              </div>
+              <div className="muted" style={{ fontSize: 12 }}>avg min / round</div>
+            </div>
+          )}
+        </div>
+      )}
 
       <TaskList incomplete={incomplete} complete={complete} todayDateStr={todayDateStr} onLaunch={launchFromTask} />
 
