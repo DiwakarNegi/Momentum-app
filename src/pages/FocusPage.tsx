@@ -8,13 +8,28 @@ import {
   clearCompletedFocusTasks, updateFocusTaskTitle,
 } from '../db/operations'
 import type { FocusSession, FocusTask } from '../db/types'
+
+// ─── YouTube IFrame API minimal types ────────────────────────────────────────
+declare global {
+  interface Window {
+    YT?: { Player: YTPlayerCtor; loaded: number }
+    onYouTubeIframeAPIReady?: () => void
+  }
+}
+type YTPlayerCtor = new (el: HTMLElement, opts: {
+  videoId: string; width?: string | number; height?: string | number
+  playerVars?: Record<string, string | number>
+  events?: { onReady?: (e: { target: YTPlayerInstance }) => void }
+}) => YTPlayerInstance
+interface YTPlayerInstance { setVolume(v: number): void; destroy(): void }
+
 // ─── Lofi radio stations ─────────────────────────────────────────────────────
-// All 24/7 YouTube live streams — royalty-free / properly licensed music.
+// All verified active 24/7 YouTube live streams (checked June 2026).
 const STATIONS = [
-  { id: 'lofi-girl',  label: 'Lofi Girl',    videoId: 'jfKfPfyJRdk', emoji: '🎵' },
-  { id: 'chillhop',  label: 'Chillhop',     videoId: '5yx6BWlEVcY', emoji: '🍃' },
-  { id: 'jazz',      label: 'Jazz Vibes',   videoId: 'HuFYqnbVbzY', emoji: '🎷' },
-  { id: 'dark-lo',   label: 'Dark Lofi',    videoId: 'b1fMo5E0M4I', emoji: '🌙' },
+  { id: 'chillhop',    label: 'Chillhop',     videoId: '5yx6BWlEVcY', emoji: '🍃' },
+  { id: 'lofi-hiphop', label: 'Lofi Hip-Hop', videoId: 'wkhLHTmS_GI', emoji: '🎵' },
+  { id: 'deep-focus',  label: 'Deep Focus',   videoId: 'rTGuBCvT6uk', emoji: '🧠' },
+  { id: 'chill-beats', label: 'Chill Beats',  videoId: 'X2iUH7SUnNw', emoji: '☕' },
 ] as const
 type StationId = typeof STATIONS[number]['id']
 
@@ -1048,31 +1063,81 @@ function LofiBar({ current, onPlay, onStop }: {
 }
 
 function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const playerRef    = useRef<YTPlayerInstance | null>(null)
+  const volumeRef    = useRef(70)
+  const [volume, setVolume] = useState(70)
+
+  useEffect(() => {
+    let destroyed = false
+
+    function init() {
+      if (destroyed || !containerRef.current) return
+      const player = new window.YT!.Player(containerRef.current, {
+        videoId,
+        width: '100%',
+        height: '148',
+        playerVars: { autoplay: 1, loop: 1, playlist: videoId },
+        events: {
+          onReady(e) {
+            if (!destroyed) { e.target.setVolume(volumeRef.current); playerRef.current = e.target }
+          },
+        },
+      })
+      if (!destroyed) playerRef.current = player
+    }
+
+    if (window.YT?.Player) {
+      init()
+    } else {
+      const prev = window.onYouTubeIframeAPIReady
+      window.onYouTubeIframeAPIReady = () => { prev?.(); init() }
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script')
+        tag.src = 'https://www.youtube.com/iframe_api'
+        document.head.appendChild(tag)
+      }
+    }
+
+    return () => {
+      destroyed = true
+      playerRef.current?.destroy()
+      playerRef.current = null
+    }
+  }, [videoId])
+
+  function handleVolume(v: number) {
+    setVolume(v)
+    volumeRef.current = v
+    playerRef.current?.setVolume(v)
+  }
+
+  const volIcon = volume === 0 ? '🔇' : volume < 40 ? '🔉' : '🔊'
+
   return (
     <div style={{
-      position: 'relative', width: '100%', maxWidth: 480, marginBottom: 16,
-      borderRadius: 16, overflow: 'hidden',
+      width: '100%', maxWidth: 480, marginBottom: 16, borderRadius: 16, overflow: 'hidden',
       boxShadow: '0 4px 24px rgba(0,0,0,0.22), 0 0 0 1px var(--border)',
     }}>
-      <iframe
-        src={`https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1`}
-        allow="autoplay; encrypted-media; picture-in-picture"
-        allowFullScreen
-        style={{ width: '100%', height: 148, border: 'none', display: 'block' }}
-        title="Lofi radio"
-      />
-      <button
-        onClick={onClose}
-        aria-label="Stop radio"
-        style={{
-          position: 'absolute', top: 8, right: 8,
-          width: 28, height: 28, borderRadius: '50%',
-          background: 'rgba(0,0,0,0.55)', border: 'none', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
-        }}
-      >
-        <Icon name="close" size={13} />
-      </button>
+      {/* key forces a fresh div when station changes so YouTube can target it cleanly */}
+      <div key={videoId} ref={containerRef} style={{ background: 'var(--surface-soft)', minHeight: 148 }} />
+      <div style={{
+        background: 'var(--card)', padding: '10px 14px',
+        display: 'flex', alignItems: 'center', gap: 10,
+        borderTop: '1px solid var(--border)',
+      }}>
+        <span style={{ fontSize: 15, flexShrink: 0 }}>{volIcon}</span>
+        <input
+          type="range" min={0} max={100} step={2} value={volume}
+          onChange={e => handleVolume(parseInt(e.target.value))}
+          style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
+          aria-label="Radio volume"
+        />
+        <button onClick={onClose} className="btn btn-ghost btn-sm"
+          style={{ fontSize: 12, padding: '4px 10px', flexShrink: 0 }}>
+          Stop
+        </button>
+      </div>
     </div>
   )
 }
