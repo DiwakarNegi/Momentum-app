@@ -21,7 +21,7 @@ type YTPlayerCtor = new (el: HTMLElement, opts: {
   playerVars?: Record<string, string | number>
   events?: { onReady?: (e: { target: YTPlayerInstance }) => void }
 }) => YTPlayerInstance
-interface YTPlayerInstance { setVolume(v: number): void; destroy(): void }
+interface YTPlayerInstance { setVolume(v: number): void; unMute(): void; destroy(): void }
 
 // ─── Lofi radio stations ─────────────────────────────────────────────────────
 // All verified active 24/7 YouTube live streams (checked June 2026).
@@ -1128,10 +1128,16 @@ function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void
         videoId,
         width: '100%',
         height: '148',
-        playerVars: { autoplay: 1, loop: 1, playlist: videoId },
+        // Start muted so the browser's autoplay policy allows it,
+        // then immediately set volume and unmute in onReady.
+        playerVars: { autoplay: 1, mute: 1, loop: 1, playlist: videoId },
         events: {
           onReady(e) {
-            if (!destroyed) { e.target.setVolume(volumeRef.current); playerRef.current = e.target }
+            if (!destroyed) {
+              e.target.setVolume(volumeRef.current)
+              e.target.unMute()
+              playerRef.current = e.target
+            }
           },
         },
       })
