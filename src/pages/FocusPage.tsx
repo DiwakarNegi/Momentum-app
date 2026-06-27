@@ -1075,17 +1075,23 @@ function LofiBar({ current, onPlay, onStop }: {
 }
 
 function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const playerRef    = useRef<YTPlayerInstance | null>(null)
-  const volumeRef    = useRef(70)
+  // wrapperRef is a plain React div whose *children* React never touches.
+  // We create the YouTube target div imperatively so React and the YT API
+  // never fight over the same DOM node (which causes the removeChild error).
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const playerRef  = useRef<YTPlayerInstance | null>(null)
+  const volumeRef  = useRef(70)
   const [volume, setVolume] = useState(70)
 
   useEffect(() => {
     let destroyed = false
+    // Imperatively created — React has zero knowledge of this element
+    const div = document.createElement('div')
+    wrapperRef.current?.appendChild(div)
 
     function init() {
-      if (destroyed || !containerRef.current) return
-      const player = new window.YT!.Player(containerRef.current, {
+      if (destroyed || !div.isConnected) return
+      const player = new window.YT!.Player(div, {
         videoId,
         width: '100%',
         height: '148',
@@ -1115,6 +1121,8 @@ function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void
       destroyed = true
       playerRef.current?.destroy()
       playerRef.current = null
+      // Remove our imperative div — safe because React never inserted it
+      if (div.parentNode) div.parentNode.removeChild(div)
     }
   }, [videoId])
 
@@ -1131,8 +1139,8 @@ function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void
       width: '100%', maxWidth: 480, marginBottom: 16, borderRadius: 16, overflow: 'hidden',
       boxShadow: '0 4px 24px rgba(0,0,0,0.22), 0 0 0 1px var(--border)',
     }}>
-      {/* key forces a fresh div when station changes so YouTube can target it cleanly */}
-      <div key={videoId} ref={containerRef} style={{ background: 'var(--surface-soft)', minHeight: 148 }} />
+      {/* React owns this wrapper but never its children — YouTube owns those */}
+      <div ref={wrapperRef} style={{ background: 'var(--surface-soft)', minHeight: 148 }} />
       <div style={{
         background: 'var(--card)', padding: '10px 14px',
         display: 'flex', alignItems: 'center', gap: 10,
