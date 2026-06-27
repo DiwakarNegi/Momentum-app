@@ -27,9 +27,9 @@ interface YTPlayerInstance { setVolume(v: number): void; destroy(): void }
 // All verified active 24/7 YouTube live streams (checked June 2026).
 const STATIONS = [
   { id: 'chillhop',    label: 'Chillhop',     videoId: '5yx6BWlEVcY', emoji: '🍃' },
-  { id: 'lofi-hiphop', label: 'Lofi Hip-Hop', videoId: 'wkhLHTmS_GI', emoji: '🎵' },
+  { id: 'lofi-hiphop', label: 'Lofi Hip-Hop', videoId: 'KjlLkXnScos', emoji: '🎵' },
   { id: 'deep-focus',  label: 'Deep Focus',   videoId: 'rTGuBCvT6uk', emoji: '🧠' },
-  { id: 'chill-beats', label: 'Chill Beats',  videoId: 'X2iUH7SUnNw', emoji: '☕' },
+  { id: 'chill-beats', label: 'Chill Beats',  videoId: 'DGBLvi795tc', emoji: '☕' },
 ] as const
 type StationId = typeof STATIONS[number]['id']
 
