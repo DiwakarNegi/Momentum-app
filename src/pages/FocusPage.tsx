@@ -8,6 +8,7 @@ import {
   clearCompletedFocusTasks, updateFocusTaskTitle,
 } from '../db/operations'
 import type { FocusSession, FocusTask } from '../db/types'
+import { useAmbientAudio, SOUNDS, type SoundId } from '../lib/useAmbientAudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,13 @@ export function FocusPage() {
   const sessions         = useFocusSessions(7)
   const tasks            = useFocusTasks()
 
+  // ── Ambient audio ──────────────────────────────────────────────────────────
+  const audio           = useAmbientAudio()
+  const audioFadeRef    = useRef(audio.fade)
+  const audioCurrentRef = useRef<SoundId | null>(null)  // stable ref for interval callbacks
+  const audioVolumeRef  = useRef(0.35)
+  audioFadeRef.current  = audio.fade  // keep ref fresh each render
+
   // ── Latest-ref pattern: always call the freshest version of these functions ─
   // inside interval callbacks, avoiding stale closure captures.
   const handleTimerDoneRef   = useRef<(completed: boolean, remaining: number) => Promise<void>>(async () => {})
@@ -158,6 +166,8 @@ export function FocusPage() {
       const breakMins = isLast ? draft.longBreakMins : draft.shortBreakMins
       setBreakSecondsLeft(breakMins * 60)
       setPhase('break')
+      // Dim audio during break — audioCurrentRef stays set so it can resume on next round
+      if (audioCurrentRef.current) audioFadeRef.current(0.1, 1500)
 
       breakIntervalRef.current = window.setInterval(() => {
         setBreakSecondsLeft(s => {
@@ -223,6 +233,8 @@ export function FocusPage() {
     setSavedSession(null)
     setShowPulse(false)
     setPhase('active')
+    // Restore audio to full volume when a new round begins
+    if (audioCurrentRef.current) audioFadeRef.current(audioVolumeRef.current, 600)
     setTimeout(() => { startTicking(); startPulseCheck() }, 0)
   }
 
@@ -342,6 +354,24 @@ export function FocusPage() {
             <Icon name="lightning" size={13} />{distractions.length} thought{distractions.length > 1 ? 's' : ''} parked
           </div>
         )}
+
+        {/* Ambient audio bar */}
+        <AmbientBar
+          current={audio.currentSound}
+          volume={audio.volume}
+          onPlay={id => {
+            audio.play(id, audioVolumeRef.current)
+            audioCurrentRef.current = id
+          }}
+          onStop={() => {
+            audio.stop()
+            audioCurrentRef.current = null
+          }}
+          onVolume={v => {
+            audio.setVolume(v)
+            audioVolumeRef.current = v
+          }}
+        />
 
         <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowCapture(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -963,6 +993,45 @@ function DoneScreen({ session, draft, linkedTask, completedRounds, onStartAnothe
           <Icon name="play" size={15} /> Start another
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Ambient audio bar ───────────────────────────────────────────────────────
+
+function AmbientBar({ current, volume, onPlay, onStop, onVolume }: {
+  current:  SoundId | null
+  volume:   number
+  onPlay:   (s: SoundId) => void
+  onStop:   () => void
+  onVolume: (v: number) => void
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 14 }}>
+      {(Object.entries(SOUNDS) as [SoundId, { label: string; emoji: string }][]).map(([id, { label, emoji }]) => (
+        <button
+          key={id}
+          onClick={() => current === id ? onStop() : onPlay(id)}
+          aria-pressed={current === id}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '6px 13px', borderRadius: 20, fontSize: 12.5, fontWeight: 600,
+            cursor: 'pointer', border: 'none', transition: 'all .15s',
+            background: current === id ? 'var(--accent)' : 'var(--surface-soft)',
+            color:      current === id ? 'var(--on-accent)' : 'var(--ink-muted)',
+          }}
+        >
+          <span>{emoji}</span> {label}
+        </button>
+      ))}
+      {current && (
+        <input
+          type="range" min={0.05} max={1} step={0.05} value={volume}
+          onChange={e => onVolume(parseFloat(e.target.value))}
+          style={{ width: 76, accentColor: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}
+          aria-label="Audio volume"
+        />
+      )}
     </div>
   )
 }
