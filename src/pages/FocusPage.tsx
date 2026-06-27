@@ -610,16 +610,16 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
         </div>
 
         <div>
-          <div className="eyebrow" style={{ marginBottom: 5 }}>What's your smallest first move?</div>
+          <div className="eyebrow" style={{ marginBottom: 5 }}>Smallest first move <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>(optional)</span></div>
           <p className="muted" style={{ fontSize: 12.5, marginBottom: 9, lineHeight: 1.55 }}>
-            Not the whole task — just the one thing that breaks the ice. "Open the doc" counts.
+            Just the one thing that breaks the ice — "open the doc" counts. Skip if you're ready to go.
           </p>
           <input
             id="session-first-step"
             name="first-step"
             className="field"
             style={{ width: '100%', boxSizing: 'border-box' }}
-            placeholder="e.g. Open the file and write one sentence, even a bad one…"
+            placeholder="e.g. Open the file and write one sentence…"
             value={draft.firstStep}
             onChange={e => set('firstStep', e.target.value)}
             autoFocus={!!draft.taskName}
@@ -704,7 +704,7 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
         className="btn btn-accent"
         style={{ width: '100%', marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         onClick={onStart}
-        disabled={!draft.taskName.trim() || !draft.firstStep.trim()}
+        disabled={!draft.taskName.trim()}
       >
         <Icon name="play" size={17} /> Start session
       </button>

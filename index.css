@@ -39,8 +39,8 @@
   --shadow-card: 0 1px 0 0 rgba(255,255,255,0.02) inset, 0 14px 36px -22px rgba(0,0,0,0.75);
   --shadow-pop:  0 18px 50px -18px rgba(0,0,0,0.7);
 
-  --font-display: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif;
-  --font-body:    'Figtree', system-ui, -apple-system, sans-serif;
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body:    'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 }
 
 /* ---------- tokens: Violet Noir ---------- */
@@ -199,7 +199,7 @@ body::before {
 }
 .muted { color: var(--ink-muted); }
 .faint { color: var(--ink-faint); }
-h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -0.02em; font-weight: 700; }
+h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -0.025em; font-weight: 800; }
 .h-greet { font-size: 30px; line-height: 1.1; }
 .h-section { font-size: 15px; font-weight: 700; }
 .num { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
