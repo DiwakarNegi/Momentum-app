@@ -326,6 +326,11 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -0.02e
 .fit-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--surface-soft); }
 .fit-dot.on { background: var(--jc); }
 
+/* ---------- number input — hide native spinners ---------- */
+.stepper-input::-webkit-inner-spin-button,
+.stepper-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper-input { -moz-appearance: textfield; }
+
 /* ---------- range slider ---------- */
 input[type='range'].mi-range { -webkit-appearance: none; appearance: none; width: 100%; height: 12px; background: transparent; cursor: pointer; }
 input[type='range'].mi-range::-webkit-slider-runnable-track { height: 12px; border-radius: 999px; background: var(--surface-soft); }

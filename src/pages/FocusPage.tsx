@@ -11,7 +11,7 @@ import type { FocusSession, FocusTask } from '../db/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Phase = 'idle' | 'setup' | 'active' | 'paused' | 'done'
+type Phase = 'idle' | 'setup' | 'active' | 'paused' | 'break' | 'done'
 
 interface Draft {
   taskName:       string
@@ -20,7 +20,7 @@ interface Draft {
   taskId?:        string   // set when launched from a task card
 }
 
-const DURATIONS = [10, 25, 50]
+const DURATIONS = [5, 15, 25, 50]
 
 // ─── Timer orb helpers ────────────────────────────────────────────────────────
 
@@ -49,29 +49,46 @@ function fmt(s: number) {
 const WAVE_A = 'M0,24 C30,15 60,15 90,24 C120,33 150,33 180,24 C210,15 240,15 270,24 C300,33 330,33 360,24 L360,48 L0,48 Z'
 const WAVE_B = 'M0,24 C30,31 60,31 90,24 C120,17 150,17 180,24 C210,31 240,31 270,24 C300,17 330,17 360,24 L360,48 L0,48 Z'
 
+// ─── Break duration heuristic ─────────────────────────────────────────────────
+
+function breakMinutesFor(plannedMinutes: number) {
+  if (plannedMinutes >= 45) return 10
+  if (plannedMinutes >= 20) return 5
+  return 3
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function FocusPage() {
   const [phase, setPhase]   = useState<Phase>('idle')
   const [draft, setDraft]   = useState<Draft>({ taskName: '', firstStep: '', plannedMinutes: 25 })
 
-  const [totalSeconds,  setTotalSeconds]  = useState(0)
-  const [secondsLeft,   setSecondsLeft]   = useState(0)
-  const [notes,         setNotes]         = useState('')
-  const [distractions,  setDistractions]  = useState<string[]>([])
-  const [captureText,   setCaptureText]   = useState('')
-  const [showCapture,   setShowCapture]   = useState(false)
-  const [showNotepad,   setShowNotepad]   = useState(false)
-  const [savedSession,  setSavedSession]  = useState<FocusSession | null>(null)
+  const [totalSeconds,    setTotalSeconds]    = useState(0)
+  const [secondsLeft,     setSecondsLeft]     = useState(0)
+  const [breakSecondsLeft, setBreakSecondsLeft] = useState(0)
+  const [notes,           setNotes]           = useState('')
+  const [distractions,    setDistractions]    = useState<string[]>([])
+  const [captureText,     setCaptureText]     = useState('')
+  const [showCapture,     setShowCapture]     = useState(false)
+  const [showNotepad,     setShowNotepad]     = useState(false)
+  const [savedSession,    setSavedSession]    = useState<FocusSession | null>(null)
 
-  const intervalRef = useRef<number | null>(null)
-  const sessions    = useFocusSessions(7)
-  const tasks       = useFocusTasks()
+  const intervalRef      = useRef<number | null>(null)
+  const breakIntervalRef = useRef<number | null>(null)
+  const sessions         = useFocusSessions(7)
+  const tasks            = useFocusTasks()
 
-  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current) }, [])
+  useEffect(() => () => {
+    if (intervalRef.current)      clearInterval(intervalRef.current)
+    if (breakIntervalRef.current) clearInterval(breakIntervalRef.current)
+  }, [])
 
   function stopTicking() {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+  }
+
+  function stopBreak() {
+    if (breakIntervalRef.current) { clearInterval(breakIntervalRef.current); breakIntervalRef.current = null }
   }
 
   const handleTimerDone = useCallback(async (completed: boolean, remaining: number) => {
@@ -88,7 +105,27 @@ export function FocusPage() {
       notes,
     })
     setSavedSession(session)
-    setPhase('done')
+
+    if (completed) {
+      // Natural end → break phase before done
+      const breakSecs = breakMinutesFor(draft.plannedMinutes) * 60
+      setBreakSecondsLeft(breakSecs)
+      setPhase('break')
+      breakIntervalRef.current = window.setInterval(() => {
+        setBreakSecondsLeft(s => {
+          if (s <= 1) {
+            clearInterval(breakIntervalRef.current!)
+            breakIntervalRef.current = null
+            setTimeout(() => setPhase('done'), 50)
+            return 0
+          }
+          return s - 1
+        })
+      }, 1000)
+    } else {
+      // Manual end → skip break, go straight to done
+      setPhase('done')
+    }
   }, [totalSeconds, draft, distractions, notes]) // eslint-disable-line
 
   function startTicking() {
@@ -136,11 +173,24 @@ export function FocusPage() {
 
   function resetToIdle() {
     stopTicking()
+    stopBreak()
     setPhase('idle')
     setNotes('')
     setDistractions([])
     setSavedSession(null)
     setDraft({ taskName: '', firstStep: '', plannedMinutes: 25 })
+  }
+
+  // Called from break screen: skip break, start the same session again immediately
+  function startAnotherRound() {
+    stopBreak()
+    beginSession()
+  }
+
+  // Called from break screen: skip break, go to done summary
+  function endBreak() {
+    stopBreak()
+    setPhase('done')
   }
 
   // ── Setup ──────────────────────────────────────────────────────────────────
@@ -230,6 +280,19 @@ export function FocusPage() {
           </button>
         </div>
       </div>
+    )
+  }
+
+  // ── Break ──────────────────────────────────────────────────────────────────
+  if (phase === 'break' && savedSession) {
+    return (
+      <BreakScreen
+        session={savedSession}
+        draft={draft}
+        breakSecondsLeft={breakSecondsLeft}
+        onEndHere={endBreak}
+        onStartAnother={startAnotherRound}
+      />
     )
   }
 
@@ -513,6 +576,10 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
 }) {
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft(p => ({ ...p, [k]: v }))
 
+  function adjustMinutes(delta: number) {
+    set('plannedMinutes', Math.max(1, Math.min(180, draft.plannedMinutes + delta)))
+  }
+
   return (
     <div className="page fade-up" style={{ maxWidth: 520 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 26 }}>
@@ -554,13 +621,15 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
 
         <div>
           <div className="eyebrow" style={{ marginBottom: 9 }}>How long?</div>
-          <div style={{ display: 'flex', gap: 8 }}>
+
+          {/* Preset chips */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {DURATIONS.map(d => (
               <button
                 key={d}
                 onClick={() => set('plannedMinutes', d)}
                 style={{
-                  flex: 1, padding: '10px 0', borderRadius: 14, fontSize: 14, fontWeight: 600,
+                  flex: '1 1 0', minWidth: 52, padding: '10px 0', borderRadius: 14, fontSize: 14, fontWeight: 600,
                   cursor: 'pointer', border: 'none', transition: 'all .15s',
                   background: draft.plannedMinutes === d ? 'var(--accent)' : 'var(--surface-soft)',
                   color:      draft.plannedMinutes === d ? 'var(--on-accent)' : 'var(--ink-muted)',
@@ -572,16 +641,51 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+
+          {/* Custom stepper — replaces the cheap browser number spinners */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
             <span className="muted" style={{ fontSize: 13 }}>Custom:</span>
-            <input
-              type="number" min={1} max={180}
-              value={DURATIONS.includes(draft.plannedMinutes) ? '' : draft.plannedMinutes}
-              onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v > 0 && v <= 180) set('plannedMinutes', v) }}
-              placeholder="min"
-              className="field"
-              style={{ width: 72 }}
-            />
+            <div style={{
+              display: 'inline-flex', alignItems: 'center',
+              border: '1.5px solid var(--border)', borderRadius: 12,
+              background: 'var(--surface-soft)',
+            }}>
+              <button
+                type="button"
+                onClick={() => adjustMinutes(-1)}
+                aria-label="Decrease by 1 minute"
+                style={{
+                  width: 36, height: 36, border: 'none', background: 'transparent',
+                  cursor: 'pointer', fontSize: 18, color: 'var(--ink-muted)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '12px 0 0 12px',
+                }}
+              >−</button>
+              <input
+                type="number"
+                min={1} max={180}
+                value={draft.plannedMinutes}
+                onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v >= 1 && v <= 180) set('plannedMinutes', v) }}
+                className="stepper-input"
+                style={{
+                  width: 44, border: 'none', background: 'transparent',
+                  textAlign: 'center', fontSize: 14, fontWeight: 600,
+                  color: 'var(--ink)', outline: 'none',
+                }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--ink-faint)', paddingRight: 4 }}>min</span>
+              <button
+                type="button"
+                onClick={() => adjustMinutes(1)}
+                aria-label="Increase by 1 minute"
+                style={{
+                  width: 36, height: 36, border: 'none', background: 'transparent',
+                  cursor: 'pointer', fontSize: 18, color: 'var(--ink-muted)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '0 12px 12px 0',
+                }}
+              >+</button>
+            </div>
           </div>
         </div>
       </div>
@@ -594,6 +698,58 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
       >
         <Icon name="play" size={17} /> Start session
       </button>
+    </div>
+  )
+}
+
+// ─── Break screen ─────────────────────────────────────────────────────────────
+
+function BreakScreen({ session, draft, breakSecondsLeft, onEndHere, onStartAnother }: {
+  session:          FocusSession
+  draft:            Draft
+  breakSecondsLeft: number
+  onEndHere:        () => void
+  onStartAnother:   () => void
+}) {
+  return (
+    <div className="page fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ textAlign: 'center', marginBottom: 28 }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>☕</div>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Break time</h1>
+        <p className="muted" style={{ fontSize: 14 }}>
+          Nice work — {session.actualMinutes} min on "{session.taskName}"
+        </p>
+      </div>
+
+      {/* Soft countdown ring */}
+      <div style={{
+        width: 148, height: 148, borderRadius: '50%',
+        border: '3px solid var(--border)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        marginBottom: 32,
+        background: 'var(--surface-soft)',
+        boxShadow: '0 0 32px -8px var(--c-sage)',
+      }}>
+        <span style={{ fontSize: 34, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--c-sage)', letterSpacing: '-1px' }}>
+          {fmt(breakSecondsLeft)}
+        </span>
+        <span className="muted" style={{ fontSize: 12, marginTop: 2 }}>break</span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn btn-ghost" onClick={onEndHere}>End here</button>
+        <button
+          className="btn btn-accent"
+          onClick={onStartAnother}
+          style={{ display: 'flex', alignItems: 'center', gap: 7 }}
+        >
+          <Icon name="play" size={15} /> {draft.plannedMinutes} min again
+        </button>
+      </div>
+
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 18, textAlign: 'center', maxWidth: 260, lineHeight: 1.6 }}>
+        Break ends automatically — or jump back in when you're ready.
+      </p>
     </div>
   )
 }
