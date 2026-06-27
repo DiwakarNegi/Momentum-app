@@ -56,7 +56,7 @@ const LONG_BREAKS  = [10, 15, 20]
 
 const DEFAULT_DRAFT: Draft = {
   taskName: '', firstStep: '', plannedMinutes: 25,
-  totalRounds: 4, shortBreakMins: 5, longBreakMins: 15,
+  totalRounds: 2, shortBreakMins: 5, longBreakMins: 15,
   pulseEnabled: false, pulseIntervalMins: 20,
 }
 
@@ -777,11 +777,23 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
               </button>
             ))}
           </div>
-          <p className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
-            {draft.totalRounds === 1
-              ? `Single session · ${draft.plannedMinutes} min total`
-              : `${draft.totalRounds} × ${draft.plannedMinutes} min = ${draft.totalRounds * draft.plannedMinutes} min total`}
-          </p>
+          {/* Cycle preview — shows the exact flow so users know when the long break fires */}
+          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: 'var(--surface-soft)', overflowX: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, whiteSpace: 'nowrap', flexWrap: 'nowrap' }}>
+              {Array.from({ length: draft.totalRounds }).map((_, i) => (
+                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 8, padding: '3px 8px', fontWeight: 700 }}>
+                    {draft.plannedMinutes}m
+                  </span>
+                  {i < draft.totalRounds - 1 ? (
+                    <span style={{ color: 'var(--c-sage)', fontWeight: 600 }}>→ ☕ {draft.shortBreakMins}m →</span>
+                  ) : (
+                    <span style={{ color: 'var(--c-amber)', fontWeight: 600 }}>→ 🎉 {draft.longBreakMins}m long break</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
 
           {/* Break durations — only shown when multi-round */}
           {draft.totalRounds > 1 && (
