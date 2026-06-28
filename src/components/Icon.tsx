@@ -261,6 +261,12 @@ const PATHS: Record<string, React.ReactNode> = {
       <circle cx="15.5" cy="12" r="1" />
     </>
   ),
+  fullscreen: (
+    <path d="M3.5 9V4.5H8M20.5 9V4.5H16M3.5 15v4.5H8M20.5 15v4.5H16" />
+  ),
+  exitFullscreen: (
+    <path d="M8 3.5v4.5H3.5M16 3.5v4.5H20.5M8 20.5v-4.5H3.5M16 20.5v-4.5H20.5" />
+  ),
 }
 
 interface IconProps {

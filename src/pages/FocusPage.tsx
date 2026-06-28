@@ -419,8 +419,23 @@ export function FocusPage() {
   const sessions         = useFocusSessions(7)
   const tasks            = useFocusTasks()
 
-  const [lofiStation, setLofiStation] = useState<StationId | null>(null)
-  const [lofiVolume,  setLofiVolume]  = useState(70)
+  const [lofiStation,  setLofiStation]  = useState<StationId | null>(null)
+  const [lofiVolume,   setLofiVolume]   = useState(70)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', handler)
+    return () => document.removeEventListener('fullscreenchange', handler)
+  }, [])
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {})
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
+  }
 
   const handleTimerDoneRef = useRef<(completed: boolean, remaining: number) => Promise<void>>(async () => {})
   const continueSessionRef = useRef<() => void>(() => {})
@@ -577,16 +592,31 @@ export function FocusPage() {
       <div className="page fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {/* Session meta */}
         <div style={{ width: '100%', maxWidth: 480, marginBottom: 20 }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 7,
-            padding: '5px 12px', borderRadius: 999,
-            background: 'var(--surface)', border: '1px solid var(--border)',
-            fontSize: 12, color: 'var(--ink-faint)', marginBottom: 10,
-          }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: phase === 'active' ? '#a7cdaf' : 'var(--ink-faint)', flexShrink: 0, transition: 'background .3s' }} />
-            {draft.totalRounds > 1
-              ? `Round ${currentRound} of ${draft.totalRounds} · ${draft.plannedMinutes} min`
-              : `Focus · ${draft.plannedMinutes} min`}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+              padding: '5px 12px', borderRadius: 999,
+              background: 'var(--surface)', border: '1px solid var(--border)',
+              fontSize: 12, color: 'var(--ink-faint)',
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: phase === 'active' ? '#a7cdaf' : 'var(--ink-faint)', flexShrink: 0, transition: 'background .3s' }} />
+              {draft.totalRounds > 1
+                ? `Round ${currentRound} of ${draft.totalRounds} · ${draft.plannedMinutes} min`
+                : `Focus · ${draft.plannedMinutes} min`}
+            </div>
+            <button
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Enter fullscreen'}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 34, height: 34, borderRadius: 10, border: '1px solid var(--border)',
+                background: 'var(--surface)', color: 'var(--ink-faint)',
+                cursor: 'pointer', transition: 'all .15s', flexShrink: 0,
+              }}
+            >
+              <Icon name={isFullscreen ? 'exitFullscreen' : 'fullscreen'} size={16} stroke={2} />
+            </button>
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: 'var(--ink)' }}>
             {draft.taskName}
@@ -1012,83 +1042,80 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
   }
 
   return (
-    <div className="page fade-up" style={{ maxWidth: 520 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 26 }}>
+    <div className="page fade-up" style={{ maxWidth: 520, paddingTop: 24, paddingBottom: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <button className="icon-btn" onClick={onBack} aria-label="Back">
           <Icon name="chevronRight" size={18} style={{ transform: 'rotate(180deg)' }} />
         </button>
-        <h1 className="h-greet" style={{ fontSize: 24, margin: 0 }}>Set up your session</h1>
+        <h1 className="h-greet" style={{ fontSize: 22, margin: 0 }}>Set up your session</h1>
       </div>
 
-      <div className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="card" style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Task name */}
         <div>
-          <div className="eyebrow" style={{ marginBottom: 9 }}>What are you working on?</div>
+          <div className="eyebrow" style={{ marginBottom: 7 }}>What are you working on?</div>
           <input id="session-task-name" name="task-name" className="field" style={{ width: '100%', boxSizing: 'border-box' }}
             placeholder="e.g. Portfolio intro, cover letter for Acme…" value={draft.taskName}
             onChange={e => set('taskName', e.target.value)} autoFocus={!draft.taskName} maxLength={100} />
         </div>
 
+        {/* First step — description removed to save vertical space */}
         <div>
-          <div className="eyebrow" style={{ marginBottom: 5 }}>
+          <div className="eyebrow" style={{ marginBottom: 7 }}>
             Smallest first move <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>(optional)</span>
           </div>
-          <p className="muted" style={{ fontSize: 12.5, marginBottom: 9, lineHeight: 1.55 }}>
-            Just the one thing that breaks the ice — "open the doc" counts. Skip if you're ready to go.
-          </p>
           <input id="session-first-step" name="first-step" className="field" style={{ width: '100%', boxSizing: 'border-box' }}
             placeholder="e.g. Open the file and write one sentence…" value={draft.firstStep}
             onChange={e => set('firstStep', e.target.value)} autoFocus={!!draft.taskName} maxLength={150} />
         </div>
 
+        {/* Duration — presets + custom stepper in one row */}
         <div>
-          <div className="eyebrow" style={{ marginBottom: 9 }}>How long per round?</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="eyebrow" style={{ marginBottom: 7 }}>How long per round?</div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {DURATIONS.map(d => (
               <button key={d} onClick={() => set('plannedMinutes', d)} aria-pressed={draft.plannedMinutes === d}
-                style={{ flex: '1 1 0', minWidth: 52, padding: '10px 0', borderRadius: 14, fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .15s',
+                style={{ flex: '1 1 0', padding: '8px 0', borderRadius: 12, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .15s',
                   background: draft.plannedMinutes === d ? 'var(--accent)' : 'var(--surface-soft)',
                   color:      draft.plannedMinutes === d ? 'var(--on-accent)' : 'var(--ink-muted)',
-                  boxShadow:  draft.plannedMinutes === d ? `0 0 16px -4px var(--accent)` : 'none' }}>
-                {d} min
+                  boxShadow:  draft.plannedMinutes === d ? `0 0 14px -4px var(--accent)` : 'none' }}>
+                {d}m
               </button>
             ))}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
-            <span className="muted" style={{ fontSize: 13 }}>Custom:</span>
-            <div style={{ display: 'inline-flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface-soft)' }}>
-              <button type="button" onClick={() => adjustMinutes(-1)} aria-label="Decrease by 1 minute"
-                style={{ width: 36, height: 36, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px 0 0 12px' }}>−</button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface-soft)', flexShrink: 0 }}>
+              <button type="button" onClick={() => adjustMinutes(-1)} aria-label="Decrease"
+                style={{ width: 30, height: 34, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, color: 'var(--ink-muted)' }}>−</button>
               <input id="session-duration" name="planned-minutes" type="number" min={1} max={180} value={draft.plannedMinutes}
                 onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v >= 1 && v <= 180) set('plannedMinutes', v) }}
-                className="stepper-input" style={{ width: 44, border: 'none', background: 'transparent', textAlign: 'center', fontSize: 14, fontWeight: 600, color: 'var(--ink)', outline: 'none' }} />
-              <span style={{ fontSize: 12, color: 'var(--ink-faint)', paddingRight: 4 }}>min</span>
-              <button type="button" onClick={() => adjustMinutes(1)} aria-label="Increase by 1 minute"
-                style={{ width: 36, height: 36, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '0 12px 12px 0' }}>+</button>
+                className="stepper-input" style={{ width: 36, border: 'none', background: 'transparent', textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--ink)', outline: 'none' }} />
+              <button type="button" onClick={() => adjustMinutes(1)} aria-label="Increase"
+                style={{ width: 30, height: 34, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, color: 'var(--ink-muted)' }}>+</button>
             </div>
           </div>
         </div>
 
+        {/* Rounds + break pickers */}
         <div>
-          <div className="eyebrow" style={{ marginBottom: 9 }}>Rounds</div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="eyebrow" style={{ marginBottom: 7 }}>Rounds</div>
+          <div style={{ display: 'flex', gap: 6 }}>
             {ROUND_OPTS.map(n => (
               <button key={n} onClick={() => set('totalRounds', n)} aria-pressed={draft.totalRounds === n}
-                style={{ flex: 1, padding: '10px 0', borderRadius: 14, fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .15s',
+                style={{ flex: 1, padding: '8px 0', borderRadius: 12, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .15s',
                   background: draft.totalRounds === n ? 'var(--accent)' : 'var(--surface-soft)',
                   color:      draft.totalRounds === n ? 'var(--on-accent)' : 'var(--ink-muted)',
-                  boxShadow:  draft.totalRounds === n ? `0 0 16px -4px var(--accent)` : 'none' }}>
+                  boxShadow:  draft.totalRounds === n ? `0 0 14px -4px var(--accent)` : 'none' }}>
                 {n}
               </button>
             ))}
           </div>
           {draft.totalRounds > 1 && (
-            <div style={{ display: 'flex', gap: 12, marginTop: 14 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
               <div style={{ flex: 1 }}>
-                <div className="eyebrow" style={{ marginBottom: 7 }}>Short break</div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div className="eyebrow" style={{ marginBottom: 5, fontSize: 10 }}>Short break</div>
+                <div style={{ display: 'flex', gap: 5 }}>
                   {SHORT_BREAKS.map(n => (
                     <button key={n} onClick={() => set('shortBreakMins', n)} aria-pressed={draft.shortBreakMins === n}
-                      style={{ flex: 1, padding: '7px 0', borderRadius: 11, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
+                      style={{ flex: 1, padding: '6px 0', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
                         background: draft.shortBreakMins === n ? 'var(--c-sage)' : 'var(--surface-soft)',
                         color:      draft.shortBreakMins === n ? 'var(--on-accent)' : 'var(--ink-muted)' }}>
                       {n}m
@@ -1097,11 +1124,11 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
                 </div>
               </div>
               <div style={{ flex: 1 }}>
-                <div className="eyebrow" style={{ marginBottom: 7 }}>Long break</div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div className="eyebrow" style={{ marginBottom: 5, fontSize: 10 }}>Long break</div>
+                <div style={{ display: 'flex', gap: 5 }}>
                   {LONG_BREAKS.map(n => (
                     <button key={n} onClick={() => set('longBreakMins', n)} aria-pressed={draft.longBreakMins === n}
-                      style={{ flex: 1, padding: '7px 0', borderRadius: 11, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
+                      style={{ flex: 1, padding: '6px 0', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
                         background: draft.longBreakMins === n ? 'var(--c-amber)' : 'var(--surface-soft)',
                         color:      draft.longBreakMins === n ? 'var(--on-accent)' : 'var(--ink-muted)' }}>
                       {n}m
@@ -1113,12 +1140,10 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
           )}
         </div>
 
+        {/* Focus Pulse — compact row, pulse intervals inline below when on */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: draft.pulseEnabled ? 10 : 0 }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>Focus Pulse</div>
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>A gentle "Still with it?" check-in mid-session</div>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Focus Pulse <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>— mid-session check-in</span></div>
             <button type="button" role="switch" aria-checked={draft.pulseEnabled}
               onClick={() => set('pulseEnabled', !draft.pulseEnabled)}
               className={`toggle-track ${draft.pulseEnabled ? 'on' : 'off'}`} style={{ flexShrink: 0 }}>
@@ -1126,25 +1151,22 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
             </button>
           </div>
           {draft.pulseEnabled && (
-            <div>
-              <div className="eyebrow" style={{ marginBottom: 7 }}>Check in every</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {PULSE_INTERVALS.map(n => (
-                  <button key={n} onClick={() => set('pulseIntervalMins', n)} aria-pressed={draft.pulseIntervalMins === n}
-                    style={{ flex: 1, padding: '8px 0', borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
-                      background: draft.pulseIntervalMins === n ? 'var(--accent)' : 'var(--surface-soft)',
-                      color:      draft.pulseIntervalMins === n ? 'var(--on-accent)' : 'var(--ink-muted)',
-                      boxShadow:  draft.pulseIntervalMins === n ? `0 0 14px -4px var(--accent)` : 'none' }}>
-                    {n} min
-                  </button>
-                ))}
-              </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              {PULSE_INTERVALS.map(n => (
+                <button key={n} onClick={() => set('pulseIntervalMins', n)} aria-pressed={draft.pulseIntervalMins === n}
+                  style={{ flex: 1, padding: '6px 0', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .12s',
+                    background: draft.pulseIntervalMins === n ? 'var(--accent)' : 'var(--surface-soft)',
+                    color:      draft.pulseIntervalMins === n ? 'var(--on-accent)' : 'var(--ink-muted)',
+                    boxShadow:  draft.pulseIntervalMins === n ? `0 0 12px -4px var(--accent)` : 'none' }}>
+                  {n}m
+                </button>
+              ))}
             </div>
           )}
         </div>
       </div>
 
-      <button className="btn btn-accent" style={{ width: '100%', marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+      <button className="btn btn-accent" style={{ width: '100%', marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         onClick={onStart} disabled={!draft.taskName.trim()}>
         <Icon name="play" size={17} /> Start session
       </button>

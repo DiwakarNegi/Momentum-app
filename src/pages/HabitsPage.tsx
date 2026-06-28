@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { format, startOfWeek, addDays } from 'date-fns'
+import { useState } from 'react'
+import { format } from 'date-fns'
 import { useHabits, useHabitLogs, useHabitSkipReasons } from '../db/hooks'
 import { toggleHabitLog } from '../db/operations'
 import { Icon } from '../components/Icon'
@@ -13,18 +13,6 @@ export function HabitsPage() {
   const skipReasons = useHabitSkipReasons()
   const [modalHabit, setModalHabit] = useState<Habit | 'new' | null>(null)
   const todayStr = format(new Date(), 'yyyy-MM-dd')
-
-  // Week stats for header
-  const weekStats = useMemo(() => {
-    if (!logs || !habits) return null
-    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
-    const weekDays  = Array.from({ length: 7 }, (_, i) => format(addDays(weekStart, i), 'yyyy-MM-dd'))
-    const today     = format(new Date(), 'EEEE') // e.g. "Monday"
-    const logDates  = new Set(logs.map(l => l.date))
-    const daysActive = weekDays.filter(d => logDates.has(d)).length
-    const logsThisWeek = logs.filter(l => weekDays.includes(l.date)).length
-    return { daysActive, logsThisWeek, today }
-  }, [logs, habits])
 
   if (!habits || !logs) {
     return (
@@ -69,30 +57,6 @@ export function HabitsPage() {
           </button>
         </div>
 
-        {/* Week stats strip */}
-        {weekStats && habits.length > 0 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 18, marginTop: 18,
-            padding: '12px 18px', borderRadius: 16,
-            background: 'var(--surface)', border: '1px solid var(--border)',
-            fontSize: 13,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ color: 'var(--ink-faint)' }}>Active days this week</span>
-              <span style={{ color: 'var(--ink)', fontWeight: 700, marginLeft: 6 }}>{weekStats.daysActive} / 7</span>
-            </div>
-            <span style={{ color: 'var(--border)' }}>·</span>
-            <div>
-              <span style={{ color: 'var(--ink-faint)' }}>Habits tended</span>
-              <span style={{ color: 'var(--ink)', fontWeight: 700, marginLeft: 6 }}>{weekStats.logsThisWeek}</span>
-            </div>
-            <span style={{ color: 'var(--border)' }}>·</span>
-            <div>
-              <span style={{ color: 'var(--ink-faint)' }}>Today</span>
-              <span style={{ color: 'var(--ink)', fontWeight: 700, marginLeft: 6 }}>{weekStats.today}</span>
-            </div>
-          </div>
-        )}
       </header>
 
       {/* ── Empty state ── */}
