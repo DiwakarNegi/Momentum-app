@@ -161,6 +161,17 @@ body::before {
 .page { max-width: 1080px; margin: 0 auto; padding: 40px 44px 80px; }
 .page-wide { max-width: 1180px; }
 
+/* Fullscreen focus mode: hide sidebar, vertically center the session */
+:fullscreen .sidebar,
+:-webkit-full-screen .sidebar { display: none !important; }
+:fullscreen .focus-session,
+:-webkit-full-screen .focus-session {
+  min-height: 100dvh;
+  justify-content: center;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
 /* ---------- brand ---------- */
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 26px; }
 .brand-mark {
