@@ -85,61 +85,6 @@ function withAlpha(hex: string, a: number) {
   return `rgba(${r},${g},${b},${a})`
 }
 
-// ─── Plant Timer SVG ──────────────────────────────────────────────────────────
-// A pot-and-plant that grows taller as the session progresses.
-// The transform origin is the soil level so the plant emerges from the pot.
-function PlantTimer({ progress, timeText, tint }: {
-  progress: number  // 0–1
-  timeText: string
-  tint:     string
-}) {
-  const k  = 0.14 + progress * 0.86                     // scaleY factor
-  const lo = (t: number) => progress > t ? 1 : 0         // leaf/bloom threshold
-  const tr = { transition: 'opacity 1.5s ease' }
-
-  return (
-    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', userSelect: 'none' }}>
-      <svg viewBox="0 0 200 280" width={180} height={252} style={{ display: 'block' }}>
-        {/* Pot body */}
-        <polygon points="56,220 144,220 158,268 42,268" fill="#5c3d2e" />
-        {/* Pot rim */}
-        <rect x="42" y="208" width="116" height="16" rx="8" fill="#7a4f38" />
-        {/* Soil */}
-        <ellipse cx="100" cy="210" rx="55" ry="8" fill="#3d2416" />
-
-        {/* Plant — grows from soil level upward, animated by scaleY */}
-        <g transform={`translate(100,210) scale(1,${k}) translate(-100,-210)`} style={{ transition: 'transform 3s ease' }}>
-          {/* Stem */}
-          <rect x="96.5" y="62" width="7" height="150" rx="3.5" fill="#6f9e74" />
-
-          {/* Leaves — fade in at progress thresholds */}
-          <ellipse cx="68" cy="152" rx="32" ry="13" fill="#86b585" opacity={lo(0.10)} transform="rotate(-28 68 152)" style={tr} />
-          <ellipse cx="132" cy="138" rx="32" ry="13" fill="#a4c79b" opacity={lo(0.20)} transform="rotate(28 132 138)" style={tr} />
-          <ellipse cx="63"  cy="118" rx="27" ry="11" fill="#7fb27f" opacity={lo(0.40)} transform="rotate(-26 63 118)" style={tr} />
-          <ellipse cx="137" cy="104" rx="27" ry="11" fill="#a8cb9f" opacity={lo(0.50)} transform="rotate(26 137 104)" style={tr} />
-          <ellipse cx="67"  cy="90"  rx="22" ry="10" fill="#86b585" opacity={lo(0.64)} transform="rotate(-22 67 90)"  style={tr} />
-          <ellipse cx="133" cy="78"  rx="22" ry="10" fill="#a4c79b" opacity={lo(0.72)} transform="rotate(22 133 78)"  style={tr} />
-
-          {/* Bloom petals */}
-          <circle cx="76"  cy="68" r="18" fill={tint} opacity={lo(0.84)} style={tr} />
-          <circle cx="124" cy="68" r="18" fill={tint} opacity={lo(0.87)} style={tr} />
-          <circle cx="100" cy="46" r="18" fill={tint} opacity={lo(0.90)} style={tr} />
-          <circle cx="100" cy="88" r="18" fill={tint} opacity={lo(0.93)} style={tr} />
-          <circle cx="100" cy="68" r="13" fill="#dcb653" opacity={lo(0.84)} style={tr} />
-        </g>
-      </svg>
-
-      {/* Time readout overlaid on the pot */}
-      <div style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', pointerEvents: 'none' }}>
-        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', color: '#f6ece3', fontFamily: 'var(--font-display)', textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}>
-          {timeText}
-        </div>
-        <div style={{ fontSize: 10, color: 'rgba(246,236,227,0.55)', letterSpacing: '0.08em', marginTop: 1 }}>remaining</div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Ambient music panel ──────────────────────────────────────────────────────
 // Collapsible panel with station selector, EQ bars animation, and volume slider.
 function AmbientPanel({ station, volume, onStation, onStop, onVolume }: {
