@@ -26,39 +26,36 @@ interface YTPlayerInstance { setVolume(v: number): void; unMute(): void; loadVid
 // ─── Lofi radio stations ─────────────────────────────────────────────────────
 // All verified active 24/7 YouTube live streams (checked June 2026).
 const STATIONS = [
-  { id: 'chillhop',    label: 'Chillhop',  videoId: '5yx6BWlEVcY', emoji: '🍃' },
-  { id: 'lofi-hiphop', label: 'Lofi Girl', videoId: 'X4VbdwhkE10', emoji: '🎵' },
+  { id: 'chillhop',    label: 'Chillhop',  videoId: '5yx6BWlEVcY', color: '#a7cdaf' },
+  { id: 'lofi-hiphop', label: 'Lofi Girl', videoId: 'X4VbdwhkE10', color: '#c4b6ec' },
 ] as const
 type StationId = typeof STATIONS[number]['id']
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Phase = 'idle' | 'setup' | 'active' | 'paused' | 'break' | 'done'
 
 interface Draft {
-  taskName:         string
-  firstStep:        string
-  plannedMinutes:   number
-  totalRounds:      number   // 1–4 work blocks per Pomodoro set
-  shortBreakMins:   number   // break between rounds
-  longBreakMins:    number   // break after final round
-  pulseEnabled:     boolean  // gentle mid-session check-in overlay
-  pulseIntervalMins: number  // how often the pulse fires
-  taskId?:          string
+  taskName:          string
+  firstStep:         string
+  plannedMinutes:    number
+  totalRounds:       number
+  shortBreakMins:    number
+  longBreakMins:     number
+  pulseEnabled:      boolean
+  pulseIntervalMins: number
+  taskId?:           string
 }
 
 const DURATIONS    = [5, 15, 25, 50]
 const ROUND_OPTS   = [1, 2, 3, 4]
 const SHORT_BREAKS = [3, 5, 10]
 const LONG_BREAKS  = [10, 15, 20]
+const PULSE_INTERVALS = [10, 15, 20]
 
 const DEFAULT_DRAFT: Draft = {
   taskName: '', firstStep: '', plannedMinutes: 25,
   totalRounds: 2, shortBreakMins: 5, longBreakMins: 15,
   pulseEnabled: false, pulseIntervalMins: 20,
 }
-
-const PULSE_INTERVALS = [10, 15, 20]
 
 // ─── Timer helpers ────────────────────────────────────────────────────────────
 
@@ -81,6 +78,315 @@ function fmt(s: number) {
 const WAVE_A = 'M0,24 C30,15 60,15 90,24 C120,33 150,33 180,24 C210,15 240,15 270,24 C300,33 330,33 360,24 L360,48 L0,48 Z'
 const WAVE_B = 'M0,24 C30,31 60,31 90,24 C120,17 150,17 180,24 C210,31 240,31 270,24 C300,17 330,17 360,24 L360,48 L0,48 Z'
 
+function withAlpha(hex: string, a: number) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${a})`
+}
+
+// ─── Plant Timer SVG ──────────────────────────────────────────────────────────
+// A pot-and-plant that grows taller as the session progresses.
+// The transform origin is the soil level so the plant emerges from the pot.
+function PlantTimer({ progress, timeText, tint }: {
+  progress: number  // 0–1
+  timeText: string
+  tint:     string
+}) {
+  const k  = 0.14 + progress * 0.86                     // scaleY factor
+  const lo = (t: number) => progress > t ? 1 : 0         // leaf/bloom threshold
+  const tr = { transition: 'opacity 1.5s ease' }
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', userSelect: 'none' }}>
+      <svg viewBox="0 0 200 280" width={180} height={252} style={{ display: 'block' }}>
+        {/* Pot body */}
+        <polygon points="56,220 144,220 158,268 42,268" fill="#5c3d2e" />
+        {/* Pot rim */}
+        <rect x="42" y="208" width="116" height="16" rx="8" fill="#7a4f38" />
+        {/* Soil */}
+        <ellipse cx="100" cy="210" rx="55" ry="8" fill="#3d2416" />
+
+        {/* Plant — grows from soil level upward, animated by scaleY */}
+        <g transform={`translate(100,210) scale(1,${k}) translate(-100,-210)`} style={{ transition: 'transform 3s ease' }}>
+          {/* Stem */}
+          <rect x="96.5" y="62" width="7" height="150" rx="3.5" fill="#6f9e74" />
+
+          {/* Leaves — fade in at progress thresholds */}
+          <ellipse cx="68" cy="152" rx="32" ry="13" fill="#86b585" opacity={lo(0.10)} transform="rotate(-28 68 152)" style={tr} />
+          <ellipse cx="132" cy="138" rx="32" ry="13" fill="#a4c79b" opacity={lo(0.20)} transform="rotate(28 132 138)" style={tr} />
+          <ellipse cx="63"  cy="118" rx="27" ry="11" fill="#7fb27f" opacity={lo(0.40)} transform="rotate(-26 63 118)" style={tr} />
+          <ellipse cx="137" cy="104" rx="27" ry="11" fill="#a8cb9f" opacity={lo(0.50)} transform="rotate(26 137 104)" style={tr} />
+          <ellipse cx="67"  cy="90"  rx="22" ry="10" fill="#86b585" opacity={lo(0.64)} transform="rotate(-22 67 90)"  style={tr} />
+          <ellipse cx="133" cy="78"  rx="22" ry="10" fill="#a4c79b" opacity={lo(0.72)} transform="rotate(22 133 78)"  style={tr} />
+
+          {/* Bloom petals */}
+          <circle cx="76"  cy="68" r="18" fill={tint} opacity={lo(0.84)} style={tr} />
+          <circle cx="124" cy="68" r="18" fill={tint} opacity={lo(0.87)} style={tr} />
+          <circle cx="100" cy="46" r="18" fill={tint} opacity={lo(0.90)} style={tr} />
+          <circle cx="100" cy="88" r="18" fill={tint} opacity={lo(0.93)} style={tr} />
+          <circle cx="100" cy="68" r="13" fill="#dcb653" opacity={lo(0.84)} style={tr} />
+        </g>
+      </svg>
+
+      {/* Time readout overlaid on the pot */}
+      <div style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', pointerEvents: 'none' }}>
+        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', color: '#f6ece3', fontFamily: 'var(--font-display)', textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}>
+          {timeText}
+        </div>
+        <div style={{ fontSize: 10, color: 'rgba(246,236,227,0.55)', letterSpacing: '0.08em', marginTop: 1 }}>remaining</div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Ambient music panel ──────────────────────────────────────────────────────
+// Collapsible panel with station selector, EQ bars animation, and volume slider.
+function AmbientPanel({ station, volume, onStation, onStop, onVolume }: {
+  station:   StationId | null
+  volume:    number
+  onStation: (id: StationId) => void
+  onStop:    () => void
+  onVolume:  (v: number) => void
+}) {
+  const [open,     setOpen]     = useState(true)
+  const [eqPhase,  setEqPhase]  = useState(0)
+
+  // Animate EQ bars while a station is playing
+  useEffect(() => {
+    if (!station) return
+    const t = setInterval(() => setEqPhase(p => p + 1), 175)
+    return () => clearInterval(t)
+  }, [station])
+
+  const EQ_FRAMES = [
+    [0.35, 0.7, 1.0, 0.6, 0.4],
+    [0.6,  1.0, 0.5, 0.9, 0.3],
+    [1.0,  0.4, 0.7, 0.5, 0.8],
+    [0.5,  0.9, 0.4, 1.0, 0.6],
+  ]
+  const bars = EQ_FRAMES[eqPhase % 4]
+
+  const activeStation = STATIONS.find(s => s.id === station)
+
+  return (
+    <div style={{
+      width: '100%', maxWidth: 480,
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: 18, overflow: 'hidden',
+    }}>
+      {/* Panel header */}
+      <div
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '13px 16px', cursor: 'pointer', userSelect: 'none',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          padding: '3px 9px 3px 5px', borderRadius: 999,
+          background: withAlpha('#a7cdaf', 0.12),
+        }}>
+          <Icon name="music" size={12} style={{ color: '#a7cdaf' }} />
+          <span style={{ fontSize: 10, letterSpacing: '0.15em', color: '#a7cdaf', fontWeight: 700 }}>AMBIENT</span>
+        </div>
+        <span style={{ flex: 1, fontSize: 13, color: 'var(--ink-muted)' }}>
+          {activeStation ? `${activeStation.label} · live` : 'No station — pick one below'}
+        </span>
+        {station && (
+          // Mini EQ indicator in header when playing
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 14, marginRight: 4 }}>
+            {bars.map((h, i) => (
+              <span key={i} style={{
+                width: 2.5, borderRadius: 2,
+                background: activeStation?.color ?? 'var(--accent)',
+                height: Math.round(h * 12) + 'px',
+                transition: 'height .18s ease',
+              }} />
+            ))}
+          </div>
+        )}
+        <Icon name="chevronDown" size={14}
+          style={{ color: 'var(--ink-faint)', transform: open ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .2s', flexShrink: 0 }} />
+      </div>
+
+      {open && (
+        <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid rgba(255,235,220,0.05)' }}>
+          {/* Station tabs */}
+          <div style={{ display: 'flex', gap: 8, paddingTop: 12 }}>
+            {STATIONS.map(s => {
+              const active = station === s.id
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => active ? onStop() : onStation(s.id)}
+                  aria-pressed={active}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 7,
+                    padding: '8px 14px', borderRadius: 999,
+                    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    fontFamily: 'var(--font-body)',
+                    background: active ? withAlpha(s.color, 0.15) : 'transparent',
+                    border: active ? `1px solid ${withAlpha(s.color, 0.35)}` : '1px solid var(--border)',
+                    color: active ? s.color : 'var(--ink-muted)',
+                    transition: 'all .15s',
+                  }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                  {s.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Now-playing card */}
+          {station && activeStation && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 13,
+              padding: 12, background: 'var(--surface-soft)', borderRadius: 13,
+            }}>
+              {/* Album art placeholder */}
+              <div style={{
+                width: 46, height: 46, borderRadius: 10, flexShrink: 0,
+                background: withAlpha(activeStation.color, 0.2),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                position: 'relative', overflow: 'hidden',
+              }}>
+                <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), transparent 60%)` }} />
+                <Icon name="music" size={20} style={{ color: activeStation.color, position: 'relative' }} />
+              </div>
+
+              {/* Track info */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {activeStation.label}
+                  </span>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '2px 7px', borderRadius: 999,
+                    background: 'rgba(255,100,100,0.12)', color: '#ff8a8a',
+                    fontSize: 9, fontWeight: 700, letterSpacing: '0.07em', flexShrink: 0,
+                  }}>
+                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#ff8a8a', flexShrink: 0 }} />
+                    LIVE
+                  </span>
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>24/7 lofi stream</span>
+              </div>
+
+              {/* EQ bars */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 22, paddingRight: 4, flexShrink: 0 }}>
+                {bars.map((h, i) => (
+                  <span key={i} style={{
+                    width: 3, borderRadius: 2,
+                    background: activeStation.color,
+                    height: Math.round(h * 18) + 'px',
+                    transition: 'height .18s ease',
+                  }} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Volume slider */}
+          {station && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Icon name="music" size={14} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
+              <input
+                type="range" min={0} max={100} step={2} value={volume}
+                onChange={e => onVolume(parseInt(e.target.value))}
+                style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                aria-label="Volume"
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── LofiPlayer — audio engine only ──────────────────────────────────────────
+// The YouTube iframe is positioned as a tiny visible corner element.
+// YouTube ToS requires a visible player; opacity/size is our compromise.
+function LofiPlayer({ videoId, volume }: { videoId: string; volume: number }) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const playerRef  = useRef<YTPlayerInstance | null>(null)
+  const volumeRef  = useRef(volume)
+  const videoIdRef = useRef(videoId)
+  videoIdRef.current = videoId
+
+  // Propagate volume changes without recreating the player
+  useEffect(() => {
+    volumeRef.current = volume
+    playerRef.current?.setVolume(volume)
+  }, [volume])
+
+  // Init the player ONCE on mount — no videoId in deps.
+  // Destroying and recreating on every station switch would lose the browser's
+  // autoplay trust, forcing the user to click the YouTube play button again.
+  useEffect(() => {
+    let destroyed = false
+    const div = document.createElement('div')
+    wrapperRef.current?.appendChild(div)
+
+    function init() {
+      if (destroyed || !div.isConnected) return
+      new window.YT!.Player(div, {
+        videoId: videoIdRef.current,
+        width: '100%', height: '100%',
+        // Start muted so the browser allows autoplay, then unmute in onReady.
+        playerVars: { autoplay: 1, mute: 1, loop: 1, playlist: videoIdRef.current },
+        events: {
+          onReady(e) {
+            if (!destroyed) {
+              e.target.setVolume(volumeRef.current)
+              e.target.unMute()
+              playerRef.current = e.target
+            }
+          },
+        },
+      })
+    }
+
+    if (window.YT?.Player) {
+      init()
+    } else {
+      const prev = window.onYouTubeIframeAPIReady
+      window.onYouTubeIframeAPIReady = () => { prev?.(); init() }
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script')
+        tag.src = 'https://www.youtube.com/iframe_api'
+        document.head.appendChild(tag)
+      }
+    }
+
+    return () => {
+      destroyed = true
+      playerRef.current?.destroy()
+      playerRef.current = null
+      if (div.parentNode) div.parentNode.removeChild(div)
+    }
+  }, []) // mount-only
+
+  // Station switch via loadVideoById — no player recreate, no second-click needed.
+  useEffect(() => {
+    if (playerRef.current) playerRef.current.loadVideoById(videoId)
+  }, [videoId])
+
+  return (
+    <div ref={wrapperRef} style={{
+      position: 'fixed', bottom: 10, right: 10,
+      width: 96, height: 54, borderRadius: 8, overflow: 'hidden',
+      zIndex: 5, opacity: 0.7,
+      border: '1px solid rgba(255,255,255,0.07)',
+      pointerEvents: 'none',
+    }} />
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function FocusPage() {
@@ -98,14 +404,14 @@ export function FocusPage() {
   const [savedSession,     setSavedSession]     = useState<FocusSession | null>(null)
   const [showPulse,        setShowPulse]        = useState(false)
 
-  // ── Round tracking ─────────────────────────────────────────────────────────
-  // Use both state (for display) and refs (for logic inside intervals/callbacks
-  // to avoid stale closure bugs with setInterval).
-  const [currentRound,    setCurrentRound]    = useState(1)
-  const [completedRounds, setCompletedRounds] = useState(0)
-  const [pendingAutoRound, setPendingAutoRound] = useState(0)  // 0 = none pending
-  const currentRoundRef   = useRef(1)
-  const isLongBreakRef    = useRef(false)
+  // Orb or Plant timer style (plant is a growing SVG, orb is the original liquid orb)
+  const [timerStyle, setTimerStyle] = useState<'orb' | 'plant'>('orb')
+
+  const [currentRound,     setCurrentRound]     = useState(1)
+  const [completedRounds,  setCompletedRounds]  = useState(0)
+  const [pendingAutoRound, setPendingAutoRound] = useState(0)
+  const currentRoundRef  = useRef(1)
+  const isLongBreakRef   = useRef(false)
 
   const intervalRef      = useRef<number | null>(null)
   const breakIntervalRef = useRef<number | null>(null)
@@ -113,13 +419,11 @@ export function FocusPage() {
   const sessions         = useFocusSessions(7)
   const tasks            = useFocusTasks()
 
-  // ── Lofi radio ─────────────────────────────────────────────────────────────
   const [lofiStation, setLofiStation] = useState<StationId | null>(null)
+  const [lofiVolume,  setLofiVolume]  = useState(70)
 
-  // ── Latest-ref pattern: always call the freshest version of these functions ─
-  // inside interval callbacks, avoiding stale closure captures.
-  const handleTimerDoneRef   = useRef<(completed: boolean, remaining: number) => Promise<void>>(async () => {})
-  const continueSessionRef   = useRef<() => void>(() => {})
+  const handleTimerDoneRef = useRef<(completed: boolean, remaining: number) => Promise<void>>(async () => {})
+  const continueSessionRef = useRef<() => void>(() => {})
 
   useEffect(() => () => {
     if (intervalRef.current)      clearInterval(intervalRef.current)
@@ -127,7 +431,6 @@ export function FocusPage() {
     if (pulseRef.current)         clearInterval(pulseRef.current)
   }, [])
 
-  // ── Auto-advance to next round when a short break expires ──────────────────
   useEffect(() => {
     if (pendingAutoRound <= 0) return
     currentRoundRef.current = pendingAutoRound
@@ -136,60 +439,37 @@ export function FocusPage() {
     continueSessionRef.current()
   }, [pendingAutoRound])
 
-  // ── Interval helpers ───────────────────────────────────────────────────────
-
-  function stopTicking() {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
-  }
-
-  function stopBreak() {
-    if (breakIntervalRef.current) { clearInterval(breakIntervalRef.current); breakIntervalRef.current = null }
-  }
-
-  function stopPulseCheck() {
-    if (pulseRef.current) { clearInterval(pulseRef.current); pulseRef.current = null }
-  }
+  function stopTicking()    { if (intervalRef.current)      { clearInterval(intervalRef.current);      intervalRef.current      = null } }
+  function stopBreak()      { if (breakIntervalRef.current) { clearInterval(breakIntervalRef.current); breakIntervalRef.current = null } }
+  function stopPulseCheck() { if (pulseRef.current)         { clearInterval(pulseRef.current);         pulseRef.current         = null } }
 
   function startPulseCheck() {
     stopPulseCheck()
     if (!draft.pulseEnabled) return
-    pulseRef.current = window.setInterval(() => {
-      setShowPulse(true)
-    }, draft.pulseIntervalMins * 60 * 1000)
+    pulseRef.current = window.setInterval(() => setShowPulse(true), draft.pulseIntervalMins * 60 * 1000)
   }
 
-  // ── Core timer done handler ────────────────────────────────────────────────
   const handleTimerDone = useCallback(async (completed: boolean, remaining: number) => {
     stopTicking()
     if (pulseRef.current) { clearInterval(pulseRef.current); pulseRef.current = null }
     setShowPulse(false)
     const actual  = Math.max(1, Math.ceil((totalSeconds - remaining) / 60))
     const session = await saveFocusSession({
-      taskId:         draft.taskId,
-      taskName:       draft.taskName,
-      firstStep:      draft.firstStep,
-      plannedMinutes: draft.plannedMinutes,
-      actualMinutes:  actual,
-      completed,
-      distractions,
-      notes,
+      taskId: draft.taskId, taskName: draft.taskName, firstStep: draft.firstStep,
+      plannedMinutes: draft.plannedMinutes, actualMinutes: actual,
+      completed, distractions, notes,
     })
     setSavedSession(session)
-
     if (completed) {
       setCompletedRounds(r => r + 1)
-      // breakSecondsLeft=0 signals "choosing" — user picks short or long from BreakScreen
       setBreakSecondsLeft(0)
       setPhase('break')
     } else {
       setPhase('done')
     }
   }, [totalSeconds, draft, distractions, notes]) // eslint-disable-line
-
-  // Keep the ref fresh so startTicking always calls the latest version
   handleTimerDoneRef.current = handleTimerDone
 
-  // Called from BreakScreen when the user picks a break duration
   function startBreakCountdown(mins: number, isLong: boolean) {
     isLongBreakRef.current = isLong
     setBreakSecondsLeft(mins * 60)
@@ -224,36 +504,24 @@ export function FocusPage() {
     }, 1000)
   }
 
-  // beginSession: fresh start (round 1, clears notes/distractions)
   function beginSession() {
     const secs = draft.plannedMinutes * 60
-    setTotalSeconds(secs)
-    setSecondsLeft(secs)
-    setNotes('')
-    setDistractions([])
-    setCaptureText('')
-    setShowCapture(false)
-    setShowNotepad(false)
+    setTotalSeconds(secs); setSecondsLeft(secs)
+    setNotes(''); setDistractions([])
+    setCaptureText(''); setShowCapture(false); setShowNotepad(false)
     setSavedSession(null)
-    setCurrentRound(1)
-    currentRoundRef.current = 1
-    setCompletedRounds(0)
+    setCurrentRound(1); currentRoundRef.current = 1; setCompletedRounds(0)
     setPhase('active')
     setTimeout(() => { startTicking(); startPulseCheck() }, 0)
   }
 
-  // continueSession: next round in a multi-round block (keeps notes/distractions)
   function continueSession() {
     const secs = draft.plannedMinutes * 60
-    setTotalSeconds(secs)
-    setSecondsLeft(secs)
-    setSavedSession(null)
-    setShowPulse(false)
+    setTotalSeconds(secs); setSecondsLeft(secs)
+    setSavedSession(null); setShowPulse(false)
     setPhase('active')
     setTimeout(() => { startTicking(); startPulseCheck() }, 0)
   }
-
-  // Keep continueSession ref fresh for the auto-advance useEffect
   continueSessionRef.current = continueSession
 
   function launchFromTask(task: FocusTask) {
@@ -264,34 +532,19 @@ export function FocusPage() {
   function pauseSession()  { stopTicking(); stopPulseCheck(); setShowPulse(false); setPhase('paused') }
   function resumeSession() { setPhase('active'); startTicking(); startPulseCheck() }
 
-  function handlePulseLostFocus() {
-    setDistractions(prev => [...prev, 'Focus check-in: lost the thread'])
-    setShowPulse(false)
-  }
-
   function captureDistraction() {
     if (!captureText.trim()) return
     setDistractions(prev => [...prev, captureText.trim()])
-    setCaptureText('')
-    setShowCapture(false)
+    setCaptureText(''); setShowCapture(false)
   }
 
   function resetToIdle() {
-    stopTicking()
-    stopBreak()
-    stopPulseCheck()
-    setShowPulse(false)
-    setPhase('idle')
-    setNotes('')
-    setDistractions([])
-    setSavedSession(null)
-    setCurrentRound(1)
-    currentRoundRef.current = 1
-    setCompletedRounds(0)
+    stopTicking(); stopBreak(); stopPulseCheck(); setShowPulse(false)
+    setPhase('idle'); setNotes(''); setDistractions([]); setSavedSession(null)
+    setCurrentRound(1); currentRoundRef.current = 1; setCompletedRounds(0)
     setDraft(DEFAULT_DRAFT)
   }
 
-  // Skip break → start next round immediately
   function skipToNextRound() {
     stopBreak()
     currentRoundRef.current++
@@ -299,20 +552,12 @@ export function FocusPage() {
     continueSession()
   }
 
-  // End break → go to done summary
-  function endBreak() {
-    stopBreak()
-    setPhase('done')
-  }
+  function endBreak() { stopBreak(); setPhase('done') }
 
-  // After long-break done screen → fresh session
   function startNewSession() {
     stopBreak()
-    setCurrentRound(1)
-    currentRoundRef.current = 1
-    setCompletedRounds(0)
-    setDraft(DEFAULT_DRAFT)
-    setPhase('setup')
+    setCurrentRound(1); currentRoundRef.current = 1; setCompletedRounds(0)
+    setDraft(DEFAULT_DRAFT); setPhase('setup')
   }
 
   // ── Setup ──────────────────────────────────────────────────────────────────
@@ -326,116 +571,185 @@ export function FocusPage() {
     const [r, g, b] = timerRGB(pct)
     const fill = `rgb(${r},${g},${b})`
     const glow = `rgba(${r},${g},${b},0.38)`
+    const progress = 1 - (totalSeconds > 0 ? secondsLeft / totalSeconds : 0)
 
     return (
       <div className="page fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div style={{ width: '100%', maxWidth: 480, marginBottom: 24 }}>
-          <div className="eyebrow" style={{ marginBottom: 5 }}>
+        {/* Session meta */}
+        <div style={{ width: '100%', maxWidth: 480, marginBottom: 20 }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 7,
+            padding: '5px 12px', borderRadius: 999,
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            fontSize: 12, color: 'var(--ink-faint)', marginBottom: 10,
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: phase === 'active' ? '#a7cdaf' : 'var(--ink-faint)', flexShrink: 0, transition: 'background .3s' }} />
             {draft.totalRounds > 1
               ? `Round ${currentRound} of ${draft.totalRounds} · ${draft.plannedMinutes} min`
-              : `Focus session · ${draft.plannedMinutes} min`}
+              : `Focus · ${draft.plannedMinutes} min`}
           </div>
-          <div style={{ fontWeight: 700, fontSize: 17 }}>{draft.taskName}</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: 'var(--ink)' }}>
+            {draft.taskName}
+          </div>
           {draft.firstStep && (
-            <div className="muted" style={{ fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Icon name="arrowRight" size={14} /><em>{draft.firstStep}</em>
+            <div style={{ fontSize: 13, color: 'var(--ink-faint)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Icon name="arrowRight" size={13} /><em>{draft.firstStep}</em>
             </div>
           )}
         </div>
 
-        <div className="orb-wrap" style={{ width: 200, marginBottom: 28 }}>
-          <div className="orb-breathe" style={{ width: 200, height: 200, boxShadow: `0 0 50px 0 ${glow}, 0 0 0 1px var(--border)` }}>
-            <div className="orb-inner" style={{ width: 200, height: 200 }}>
-              <div className="orb-fill" style={{ height: `${pct}%`, background: `linear-gradient(180deg, ${fill} 0%, rgba(${r},${g},${b},0.75) 100%)`, transition: 'height 1s linear, background 1s linear' }} />
-              <div className="orb-bubbles" style={{ height: `${pct}%` }}>
-                {pct > 10 && <span className="orb-bubble" style={{ left: '30%', width: 5, height: 5, '--d': '6s', '--delay': '0s', '--h': '120px' } as React.CSSProperties} />}
-                {pct > 25 && <span className="orb-bubble" style={{ left: '62%', width: 4, height: 4, '--d': '7.5s', '--delay': '2.1s', '--h': '140px' } as React.CSSProperties} />}
-              </div>
-              <div className="orb-wave" style={{ bottom: `calc(${pct}% - 24px)` }}>
-                <svg viewBox="0 0 360 48" preserveAspectRatio="none" className="orb-wave-svg"><path d={WAVE_A} fill={fill} /></svg>
-                <svg viewBox="0 0 360 48" preserveAspectRatio="none" className="orb-wave-svg orb-wave-2"><path d={WAVE_B} fill={fill} /></svg>
-              </div>
-              <div className="orb-sheen" />
-              <div className="orb-readout">
-                <span className="orb-num" style={{ fontSize: 40 }}>{fmt(secondsLeft)}</span>
-                <span className="orb-label">{phase === 'paused' ? 'paused' : 'remaining'}</span>
+        {/* ── Timer visual — orb (unchanged) OR growing plant ── */}
+        <div style={{ marginBottom: 16 }}>
+          {timerStyle === 'orb' ? (
+            <div className="orb-wrap" style={{ width: 200 }}>
+              <div className="orb-breathe" style={{ width: 200, height: 200, boxShadow: `0 0 50px 0 ${glow}, 0 0 0 1px var(--border)` }}>
+                <div className="orb-inner" style={{ width: 200, height: 200 }}>
+                  <div className="orb-fill" style={{ height: `${pct}%`, background: `linear-gradient(180deg, ${fill} 0%, rgba(${r},${g},${b},0.75) 100%)`, transition: 'height 1s linear, background 1s linear' }} />
+                  <div className="orb-bubbles" style={{ height: `${pct}%` }}>
+                    {pct > 10 && <span className="orb-bubble" style={{ left: '30%', width: 5, height: 5, '--d': '6s', '--delay': '0s', '--h': '120px' } as React.CSSProperties} />}
+                    {pct > 25 && <span className="orb-bubble" style={{ left: '62%', width: 4, height: 4, '--d': '7.5s', '--delay': '2.1s', '--h': '140px' } as React.CSSProperties} />}
+                  </div>
+                  <div className="orb-wave" style={{ bottom: `calc(${pct}% - 24px)` }}>
+                    <svg viewBox="0 0 360 48" preserveAspectRatio="none" className="orb-wave-svg"><path d={WAVE_A} fill={fill} /></svg>
+                    <svg viewBox="0 0 360 48" preserveAspectRatio="none" className="orb-wave-svg orb-wave-2"><path d={WAVE_B} fill={fill} /></svg>
+                  </div>
+                  <div className="orb-sheen" />
+                  <div className="orb-readout">
+                    <span className="orb-num" style={{ fontSize: 40 }}>{fmt(secondsLeft)}</span>
+                    <span className="orb-label">{phase === 'paused' ? 'paused' : 'remaining'}</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <PlantTimer progress={progress} timeText={fmt(secondsLeft)} tint={fill} />
+          )}
         </div>
 
-        {distractions.length > 0 && (
-          <div className="muted" style={{ fontSize: 12.5, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Icon name="lightning" size={13} />{distractions.length} thought{distractions.length > 1 ? 's' : ''} parked
-          </div>
-        )}
+        {/* Style toggle — Plant / Orb */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 0,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 999, padding: 3, marginBottom: 24,
+        }}>
+          {(['orb', 'plant'] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setTimerStyle(s)}
+              style={{
+                padding: '6px 16px', borderRadius: 999, border: 'none',
+                fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                fontFamily: 'var(--font-body)',
+                background: timerStyle === s ? 'var(--surface-soft)' : 'transparent',
+                color:      timerStyle === s ? 'var(--ink)' : 'var(--ink-faint)',
+                transition: 'all .15s',
+              }}
+            >
+              {s === 'orb' ? 'Orb' : 'Plant'}
+            </button>
+          ))}
+        </div>
 
-        {/* Lofi radio — YouTube embeds continue playing through breaks */}
-        <LofiBar current={lofiStation} onPlay={setLofiStation} onStop={() => setLofiStation(null)} />
-        {lofiStation && (
-          <LofiPlayer
-            videoId={STATIONS.find(s => s.id === lofiStation)!.videoId}
-            onClose={() => setLofiStation(null)}
-          />
-        )}
-
+        {/* ── Primary controls ── */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowCapture(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="lightning" size={15} /> Distracted?
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowNotepad(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="note" size={15} /> Notes
-          </button>
-        </div>
-
-        {showCapture && (
-          <div className="card card-pad" style={{ width: '100%', maxWidth: 480, marginBottom: 12, display: 'flex', gap: 8 }}>
-            <input id="capture-thought" name="capture" className="field" style={{ flex: 1 }} placeholder="Park the thought, stay in the session…" value={captureText} onChange={e => setCaptureText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') captureDistraction() }} autoFocus maxLength={200} />
-            <button className="btn btn-accent btn-sm" onClick={captureDistraction}>Park it</button>
-          </div>
-        )}
-
-        {showNotepad && (
-          <div className="card card-pad" style={{ width: '100%', maxWidth: 480, marginBottom: 12 }}>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>Session notes</div>
-            <textarea id="session-notes" name="notes" className="field" style={{ width: '100%', boxSizing: 'border-box', minHeight: 100, resize: 'vertical' }} placeholder="Jot anything down — ideas, links, things to follow up on…" value={notes} onChange={e => setNotes(e.target.value)} maxLength={2000} />
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 10 }}>
           {phase === 'active' ? (
-            <button className="btn btn-ghost" onClick={pauseSession} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <button className="btn btn-ghost" onClick={pauseSession} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '11px 22px' }}>
               <Icon name="pause" size={16} /> Pause
             </button>
           ) : (
-            <button className="btn btn-accent" onClick={resumeSession} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <button className="btn btn-accent" onClick={resumeSession} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '11px 22px' }}>
               <Icon name="play" size={16} /> Resume
             </button>
           )}
-          <button className="btn btn-ghost" onClick={() => handleTimerDoneRef.current(false, secondsLeft)} style={{ color: 'var(--ink-muted)' }}>
+          <button className="btn btn-ghost" onClick={() => handleTimerDoneRef.current(false, secondsLeft)} style={{ color: 'var(--ink-muted)', padding: '11px 20px' }}>
             End session
           </button>
         </div>
 
-        {/* Focus Pulse overlay — slides in gently when mid-session check-in fires */}
+        {/* ── Secondary actions ── */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowCapture(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}
+          >
+            <Icon name="lightning" size={14} />
+            {distractions.length > 0 ? `${distractions.length} parked` : 'Distracted?'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowNotepad(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}
+          >
+            <Icon name="note" size={14} /> Notes
+          </button>
+        </div>
+
+        {/* Distraction capture */}
+        {showCapture && (
+          <div style={{
+            width: '100%', maxWidth: 480, marginBottom: 12,
+            padding: 14, borderRadius: 14,
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            display: 'flex', gap: 8,
+          }}>
+            <input id="capture-thought" name="capture" className="field" style={{ flex: 1 }}
+              placeholder="Park the thought, stay in the session…"
+              value={captureText} onChange={e => setCaptureText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') captureDistraction() }} autoFocus maxLength={200} />
+            <button className="btn btn-accent btn-sm" onClick={captureDistraction}>Park it</button>
+          </div>
+        )}
+
+        {/* Notepad */}
+        {showNotepad && (
+          <div style={{
+            width: '100%', maxWidth: 480, marginBottom: 12,
+            padding: 14, borderRadius: 14,
+            background: 'var(--surface)', border: '1px solid var(--border)',
+          }}>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>Session notes</div>
+            <textarea id="session-notes" name="notes" className="field"
+              style={{ width: '100%', boxSizing: 'border-box', minHeight: 90, resize: 'vertical' }}
+              placeholder="Jot anything down — ideas, links, things to follow up on…"
+              value={notes} onChange={e => setNotes(e.target.value)} maxLength={2000} />
+          </div>
+        )}
+
+        {/* ── Ambient music panel ── */}
+        <AmbientPanel
+          station={lofiStation}
+          volume={lofiVolume}
+          onStation={setLofiStation}
+          onStop={() => setLofiStation(null)}
+          onVolume={setLofiVolume}
+        />
+
+        {/* Hidden audio engine — tiny corner iframe */}
+        {lofiStation && (
+          <LofiPlayer
+            videoId={STATIONS.find(s => s.id === lofiStation)!.videoId}
+            volume={lofiVolume}
+          />
+        )}
+
+        {/* Focus Pulse overlay */}
         {showPulse && phase === 'active' && (
           <div style={{
             position: 'fixed', bottom: 88, left: '50%', transform: 'translateX(-50%)',
             width: 'min(340px, calc(100vw - 40px))',
             background: 'var(--card)', borderRadius: 22,
             boxShadow: '0 8px 48px rgba(0,0,0,0.24), 0 0 0 1px var(--border)',
-            padding: '20px 22px', zIndex: 200,
-            animation: 'fade-up .25s ease',
+            padding: '20px 22px', zIndex: 200, animation: 'fade-up .25s ease',
           }}>
-            <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Still with it? 👀</p>
-            <p className="muted" style={{ fontSize: 13, marginBottom: 4, lineHeight: 1.5 }}>
-              {draft.taskName}
-            </p>
+            <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Still with it?</p>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 4, lineHeight: 1.5 }}>{draft.taskName}</p>
             <p className="faint" style={{ fontSize: 11.5, marginBottom: 16 }}>
               {Math.floor((totalSeconds - secondsLeft) / 60)} min in
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={handlePulseLostFocus}>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1 }}
+                onClick={() => { setDistractions(prev => [...prev, 'Focus check-in: lost the thread']); setShowPulse(false) }}>
                 Lost the thread
               </button>
               <button className="btn btn-accent btn-sm" style={{ flex: 1 }} onClick={() => setShowPulse(false)}>
@@ -487,8 +801,6 @@ export function FocusPage() {
   const complete      = tasks?.filter(t => t.completed)  ?? []
   const todaySessions = sessions?.filter(s => s.date === todayDateStr) ?? []
   const pastSessions  = sessions?.filter(s => s.date !== todayDateStr) ?? []
-
-  // Today's stats for the idle header stat strip
   const todayCompletedSessions = todaySessions.filter(s => s.completed)
   const todayTotalMins = todaySessions.reduce((acc, s) => acc + s.actualMinutes, 0)
 
@@ -496,34 +808,27 @@ export function FocusPage() {
     <div className="page fade-up">
       <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 className="h-greet" style={{ fontSize: 27 }}>Focus</h1>
-          <p className="muted" style={{ margin: '6px 0 0', fontSize: 14.5 }}>Name the task, shrink the first step, start the clock.</p>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 800, letterSpacing: '-0.03em', margin: 0 }}>Focus</h1>
+          <p className="muted" style={{ margin: '6px 0 0', fontSize: 14 }}>Name the task, shrink the first step, start the clock.</p>
         </div>
         <button className="btn btn-accent" onClick={() => setPhase('setup')} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <Icon name="play" size={16} /> New session
         </button>
       </header>
 
-      {/* Today's Pomodoro stats — rounds completed + total focused minutes */}
       {todaySessions.length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
           <div className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>
-              {todayCompletedSessions.length}
-            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>{todayCompletedSessions.length}</div>
             <div className="muted" style={{ fontSize: 12 }}>rounds today</div>
           </div>
           <div className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>
-              {todayTotalMins}
-            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>{todayTotalMins}</div>
             <div className="muted" style={{ fontSize: 12 }}>min focused</div>
           </div>
           {todaySessions.length > 1 && (
             <div className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>
-                {Math.round(todayTotalMins / todaySessions.length)}
-              </div>
+              <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)' }}>{Math.round(todayTotalMins / todaySessions.length)}</div>
               <div className="muted" style={{ fontSize: 12 }}>avg min / round</div>
             </div>
           )}
@@ -578,7 +883,6 @@ function TaskList({ incomplete, complete, todayDateStr, onLaunch }: {
 }) {
   const [input,    setInput]    = useState('')
   const [showDone, setShowDone] = useState(false)
-
   const carriedOver = incomplete.filter(t => !t.createdAt.startsWith(todayDateStr))
   const addedToday  = incomplete.filter(t =>  t.createdAt.startsWith(todayDateStr))
 
@@ -618,9 +922,7 @@ function TaskList({ incomplete, complete, todayDateStr, onLaunch }: {
 
       {addedToday.length > 0 && (
         <div>
-          {carriedOver.length > 0 && (
-            <div className="faint" style={{ fontSize: 11.5, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Added today</div>
-          )}
+          {carriedOver.length > 0 && <div className="faint" style={{ fontSize: 11.5, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Added today</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {addedToday.map(t => <TaskRow key={t.id} task={t} onLaunch={() => onLaunch(t)} />)}
           </div>
@@ -650,8 +952,6 @@ function TaskList({ incomplete, complete, todayDateStr, onLaunch }: {
   )
 }
 
-// ─── Individual task row ──────────────────────────────────────────────────────
-
 function TaskRow({ task, onLaunch }: { task: FocusTask; onLaunch: () => void }) {
   const [editing, setEditing] = useState(false)
   const [val,     setVal]     = useState(task.title)
@@ -662,15 +962,21 @@ function TaskRow({ task, onLaunch }: { task: FocusTask; onLaunch: () => void }) 
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}
-      onMouseLeave={() => { if (editing) commitEdit() }}>
+    <div
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}
+      onMouseLeave={() => { if (editing) commitEdit() }}
+    >
       <button onClick={() => toggleFocusTask(task.id)} aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
         style={{ flexShrink: 0, width: 20, height: 20, borderRadius: '50%', cursor: 'pointer', border: task.completed ? 'none' : '2px solid var(--border)', background: task.completed ? 'var(--c-sage)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' }}>
         {task.completed && <Icon name="check" size={11} style={{ color: '#fff' }} />}
       </button>
 
       {editing ? (
-        <input id={`task-edit-${task.id}`} name="task-title" className="field" style={{ flex: 1, padding: '3px 8px', fontSize: 14 }} value={val} onChange={e => setVal(e.target.value)} onBlur={commitEdit} onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') { setVal(task.title); setEditing(false) } }} autoFocus maxLength={120} />
+        <input id={`task-edit-${task.id}`} name="task-title" className="field" style={{ flex: 1, padding: '3px 8px', fontSize: 14 }} value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') { setVal(task.title); setEditing(false) } }}
+          autoFocus maxLength={120} />
       ) : (
         <span style={{ flex: 1, fontSize: 14, lineHeight: 1.35, cursor: 'text', textDecoration: task.completed ? 'line-through' : 'none', color: task.completed ? 'var(--ink-faint)' : 'var(--ink)' }}
           onDoubleClick={() => { if (!task.completed) { setVal(task.title); setEditing(true) } }}>
@@ -715,7 +1021,6 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
       </div>
 
       <div className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* Task */}
         <div>
           <div className="eyebrow" style={{ marginBottom: 9 }}>What are you working on?</div>
           <input id="session-task-name" name="task-name" className="field" style={{ width: '100%', boxSizing: 'border-box' }}
@@ -723,7 +1028,6 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
             onChange={e => set('taskName', e.target.value)} autoFocus={!draft.taskName} maxLength={100} />
         </div>
 
-        {/* First step — optional */}
         <div>
           <div className="eyebrow" style={{ marginBottom: 5 }}>
             Smallest first move <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>(optional)</span>
@@ -736,7 +1040,6 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
             onChange={e => set('firstStep', e.target.value)} autoFocus={!!draft.taskName} maxLength={150} />
         </div>
 
-        {/* Work duration */}
         <div>
           <div className="eyebrow" style={{ marginBottom: 9 }}>How long per round?</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -765,7 +1068,6 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
           </div>
         </div>
 
-        {/* Rounds */}
         <div>
           <div className="eyebrow" style={{ marginBottom: 9 }}>Rounds</div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -775,11 +1077,10 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
                   background: draft.totalRounds === n ? 'var(--accent)' : 'var(--surface-soft)',
                   color:      draft.totalRounds === n ? 'var(--on-accent)' : 'var(--ink-muted)',
                   boxShadow:  draft.totalRounds === n ? `0 0 16px -4px var(--accent)` : 'none' }}>
-                {n === 1 ? '1' : n}
+                {n}
               </button>
             ))}
           </div>
-          {/* Break durations — only shown when multi-round */}
           {draft.totalRounds > 1 && (
             <div style={{ display: 'flex', gap: 12, marginTop: 14 }}>
               <div style={{ flex: 1 }}>
@@ -812,23 +1113,15 @@ function SetupScreen({ draft, setDraft, onStart, onBack }: {
           )}
         </div>
 
-        {/* Focus Pulse */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: draft.pulseEnabled ? 10 : 0 }}>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14 }}>Focus Pulse</div>
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
-                A gentle "Still with it?" check-in mid-session
-              </div>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>A gentle "Still with it?" check-in mid-session</div>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={draft.pulseEnabled}
+            <button type="button" role="switch" aria-checked={draft.pulseEnabled}
               onClick={() => set('pulseEnabled', !draft.pulseEnabled)}
-              className={`toggle-track ${draft.pulseEnabled ? 'on' : 'off'}`}
-              style={{ flexShrink: 0 }}
-            >
+              className={`toggle-track ${draft.pulseEnabled ? 'on' : 'off'}`} style={{ flexShrink: 0 }}>
               <span className="toggle-thumb" />
             </button>
           </div>
@@ -887,43 +1180,22 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
               ? <Icon name="palmtree" size={38} stroke={1.5} />
               : <Icon name="coffee" size={38} stroke={1.5} />}
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
-          Round {currentRound} done
-        </h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Round {currentRound} done</h1>
         <p className="faint" style={{ fontSize: 12.5 }}>
           {session.actualMinutes} min focused on "{session.taskName}"
         </p>
       </div>
 
       {choosing ? (
-        /* ── Break choice — user picks short or long ── */
         <div style={{ width: '100%', maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <p className="muted" style={{ textAlign: 'center', fontSize: 14, marginBottom: 6 }}>How long a break?</p>
-          <button
-            className="btn"
-            onClick={onShortBreak}
-            style={{
-              width: '100%', padding: '14px 20px', borderRadius: 16,
-              background: 'var(--surface-soft)', border: '2px solid var(--c-sage)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              cursor: 'pointer', transition: 'all .15s',
-            }}
-          >
+          <button className="btn" onClick={onShortBreak} style={{ width: '100%', padding: '14px 20px', borderRadius: 16, background: 'var(--surface-soft)', border: '2px solid var(--c-sage)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all .15s' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 700 }}>
               <Icon name="coffee" size={18} style={{ color: 'var(--c-sage)' }} /> Short break
             </span>
             <span style={{ color: 'var(--c-sage)', fontWeight: 700, fontSize: 15 }}>{draft.shortBreakMins} min</span>
           </button>
-          <button
-            className="btn"
-            onClick={onLongBreak}
-            style={{
-              width: '100%', padding: '14px 20px', borderRadius: 16,
-              background: 'var(--surface-soft)', border: '2px solid var(--c-amber)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              cursor: 'pointer', transition: 'all .15s',
-            }}
-          >
+          <button className="btn" onClick={onLongBreak} style={{ width: '100%', padding: '14px 20px', borderRadius: 16, background: 'var(--surface-soft)', border: '2px solid var(--c-amber)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all .15s' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 700 }}>
               <Icon name="palmtree" size={18} style={{ color: 'var(--c-amber)' }} /> Long break
             </span>
@@ -939,26 +1211,16 @@ function BreakScreen({ session, draft, currentRound, isLongBreak, breakSecondsLe
           </div>
         </div>
       ) : (
-        /* ── Countdown ── */
         <>
-          <div style={{
-            width: 148, height: 148, borderRadius: '50%', border: '3px solid var(--border)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 10, background: 'var(--surface-soft)',
-            boxShadow: `0 0 36px -8px ${accentColor}`,
-          }}>
+          <div style={{ width: 148, height: 148, borderRadius: '50%', border: '3px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginBottom: 10, background: 'var(--surface-soft)', boxShadow: `0 0 36px -8px ${accentColor}` }}>
             <span style={{ fontSize: 34, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: accentColor, letterSpacing: '-1px' }}>
               {fmt(breakSecondsLeft)}
             </span>
             <span className="muted" style={{ fontSize: 11 }}>{isLongBreak ? 'long break' : 'short break'}</span>
           </div>
-
           <p className="faint" style={{ fontSize: 11.5, marginBottom: 28, textAlign: 'center', maxWidth: 260, lineHeight: 1.6 }}>
-            {isLongBreak
-              ? "Ends automatically — or close when you're ready."
-              : 'Round starts automatically — or skip the break anytime.'}
+            {isLongBreak ? "Ends automatically — or close when you're ready." : 'Round starts automatically — or skip the break anytime.'}
           </p>
-
           <div style={{ display: 'flex', gap: 10 }}>
             {isLongBreak ? (
               <>
@@ -1076,136 +1338,6 @@ function DoneScreen({ session, draft, linkedTask, completedRounds, onStartAnothe
         <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onBack}>Back</button>
         <button className="btn btn-accent" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} onClick={onStartAnother}>
           <Icon name="play" size={15} /> Start another
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─── Lofi radio ──────────────────────────────────────────────────────────────
-
-function LofiBar({ current, onPlay, onStop }: {
-  current: StationId | null
-  onPlay:  (id: StationId) => void
-  onStop:  () => void
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
-      {STATIONS.map(s => (
-        <button
-          key={s.id}
-          onClick={() => current === s.id ? onStop() : onPlay(s.id)}
-          aria-pressed={current === s.id}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            padding: '6px 13px', borderRadius: 20, fontSize: 12.5, fontWeight: 600,
-            cursor: 'pointer', border: 'none', transition: 'all .15s',
-            background: current === s.id ? 'var(--accent)' : 'var(--surface-soft)',
-            color:      current === s.id ? 'var(--on-accent)' : 'var(--ink-muted)',
-          }}
-        >
-          <span>{s.emoji}</span> {s.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function LofiPlayer({ videoId, onClose }: { videoId: string; onClose: () => void }) {
-  // wrapperRef is a plain React div whose *children* React never touches.
-  const wrapperRef  = useRef<HTMLDivElement>(null)
-  const playerRef   = useRef<YTPlayerInstance | null>(null)
-  const volumeRef   = useRef(70)
-  const videoIdRef  = useRef(videoId)   // always-current, read in init closure
-  videoIdRef.current = videoId
-  const [volume, setVolume] = useState(70)
-
-  // Init the player ONCE on mount — no videoId in deps.
-  // Destroying and recreating on every station switch would lose the browser's
-  // autoplay trust, forcing the user to click the YouTube play button again.
-  useEffect(() => {
-    let destroyed = false
-    const div = document.createElement('div')
-    wrapperRef.current?.appendChild(div)
-
-    function init() {
-      if (destroyed || !div.isConnected) return
-      new window.YT!.Player(div, {
-        videoId: videoIdRef.current,
-        width: '100%', height: '148',
-        // Start muted so the browser allows autoplay, then unmute in onReady.
-        playerVars: { autoplay: 1, mute: 1, loop: 1, playlist: videoIdRef.current },
-        events: {
-          onReady(e) {
-            if (!destroyed) {
-              e.target.setVolume(volumeRef.current)
-              e.target.unMute()
-              playerRef.current = e.target
-            }
-          },
-        },
-      })
-    }
-
-    if (window.YT?.Player) {
-      init()
-    } else {
-      const prev = window.onYouTubeIframeAPIReady
-      window.onYouTubeIframeAPIReady = () => { prev?.(); init() }
-      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-        const tag = document.createElement('script')
-        tag.src = 'https://www.youtube.com/iframe_api'
-        document.head.appendChild(tag)
-      }
-    }
-
-    return () => {
-      destroyed = true
-      playerRef.current?.destroy()
-      playerRef.current = null
-      if (div.parentNode) div.parentNode.removeChild(div)
-    }
-  }, []) // mount-only
-
-  // When the station changes while the player is live, swap via loadVideoById —
-  // this reuses the existing trusted player so no second click is needed.
-  useEffect(() => {
-    if (playerRef.current) {
-      playerRef.current.loadVideoById(videoId)
-    }
-    // If player isn't ready yet, onReady reads videoIdRef.current which is already updated.
-  }, [videoId])
-
-  function handleVolume(v: number) {
-    setVolume(v)
-    volumeRef.current = v
-    playerRef.current?.setVolume(v)
-  }
-
-  const volIcon = volume === 0 ? '🔇' : volume < 40 ? '🔉' : '🔊'
-
-  return (
-    <div style={{
-      width: '100%', maxWidth: 480, marginBottom: 16, borderRadius: 16, overflow: 'hidden',
-      boxShadow: '0 4px 24px rgba(0,0,0,0.22), 0 0 0 1px var(--border)',
-    }}>
-      {/* React owns this wrapper but never its children — YouTube owns those */}
-      <div ref={wrapperRef} style={{ background: 'var(--surface-soft)', minHeight: 148 }} />
-      <div style={{
-        background: 'var(--card)', padding: '10px 14px',
-        display: 'flex', alignItems: 'center', gap: 10,
-        borderTop: '1px solid var(--border)',
-      }}>
-        <span style={{ fontSize: 15, flexShrink: 0 }}>{volIcon}</span>
-        <input
-          type="range" min={0} max={100} step={2} value={volume}
-          onChange={e => handleVolume(parseInt(e.target.value))}
-          style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
-          aria-label="Radio volume"
-        />
-        <button onClick={onClose} className="btn btn-ghost btn-sm"
-          style={{ fontSize: 12, padding: '4px 10px', flexShrink: 0 }}>
-          Stop
         </button>
       </div>
     </div>
